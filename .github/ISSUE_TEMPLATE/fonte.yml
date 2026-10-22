@@ -1,0 +1,57 @@
+name: Fonte
+description: Proponi o verifica una fonte esterna, anche senza implementare l'adapter
+title: "[Fonte] "
+labels:
+  - area:fonti
+body:
+  - type: input
+    id: nome
+    attributes:
+      label: Fonte
+      placeholder: Federazione, sistema torneo, archivio, broadcast...
+    validations:
+      required: true
+
+  - type: textarea
+    id: valore
+    attributes:
+      label: Perché è utile
+      description: Quali dati o casi d'uso renderebbe possibili?
+    validations:
+      required: true
+
+  - type: textarea
+    id: accesso
+    attributes:
+      label: Accesso
+      description: URL, formato o modalità nota. Non inserire credenziali.
+
+  - type: textarea
+    id: diritti
+    attributes:
+      label: Diritti e limiti noti
+      description: Uso, conservazione, redistribuzione o dubbi. "Da verificare" è una risposta valida.
+    validations:
+      required: true
+
+  - type: textarea
+    id: note
+    attributes:
+      label: Note tecniche
+      description: Esempio di risposta, frequenza, identificativi, edge case o proposta di adapter, se li conosci.
+
+  - type: checkboxes
+    id: collaborazione
+    attributes:
+      label: Collaborazione
+      options:
+        - label: Posso aiutare a verificare la fonte.
+        - label: Mi interessa lavorare all'adapter.
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy
+      options:
+        - label: Non sto pubblicando credenziali, corpus privati o dati personali non necessari.
+          required: true

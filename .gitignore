@@ -1,0 +1,17 @@
+/data/lichess/
+/data/**/*.pgn
+/data/**/*.pgn.zst
+/logs/
+target/
+*.tmp
+*.aria2
+/target/
+/data/
+/results/
+/bin/stockfish
+*.part
+*.log
+
+# Risultati e stato locale delle versioni archiviate
+/archive/**/results/
+/archive/**/.last-env

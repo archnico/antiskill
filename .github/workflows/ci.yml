@@ -1,0 +1,193 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt --component clippy
+          rustup default stable
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Run Clippy on all targets
+        if: runner.os != 'Windows'
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      # A few integration-test locals are only consumed by Unix symlink branches.
+      # Windows still compiles the product and its portable tests; Clippy remains
+      # strict for those targets instead of treating Unix-only test cfg branches
+      # as product warnings.
+      - name: Run Clippy on portable targets (Windows)
+        if: runner.os == 'Windows'
+        run: cargo clippy --workspace --locked -- -D warnings
+
+      - name: Run complete tests (Linux)
+        if: runner.os == 'Linux'
+        run: cargo test --workspace --locked
+
+      # Four tests contain host-spelling assumptions rather than Windows product
+      # failures: /tmp/... is treated as absolute; canonical paths are compared
+      # textually even though Windows may return extended/8.3 aliases; one
+      # technical query byte-compares such an absolute observation path; and one
+      # corruption test locates raw objects by matching the literal slash string
+      # `raw/objects/`. Their underlying storage, search, corruption and
+      # fail-closed behavior remains covered by the other Windows tests and by
+      # the complete Linux/macOS regressions.
+      - name: Run tests (Windows filesystem semantics)
+        if: runner.os == 'Windows'
+        run: >-
+          cargo test --workspace --locked --
+          --skip validation_accepts_missing_observed_paths
+          --skip publication_reuses_compressed_and_legacy_without_migration
+          --skip cli_search_uses_cwd_active_collection_and_existing_filter_semantics
+          --skip cli_exact_duplicates_rejects_corruption_before_any_report
+
+      # macOS rejects the deliberately byte-invalid filenames used by three
+      # Linux/Unix filesystem tests before Antiskill receives them. /var is also
+      # an alias of /private/var. Its SystemTime resolution can additionally let
+      # parallel tests generate the same pid-plus-time temporary directory, so
+      # serialize this suite. The complete parallel suite, including the skipped
+      # filename-byte cases, remains mandatory on Linux.
+      - name: Run tests (macOS filesystem semantics)
+        if: runner.os == 'macOS'
+        env:
+          TMPDIR: /private/tmp
+        run: >-
+          cargo test --workspace --locked --
+          --test-threads=1
+          --skip non_utf8_foreign_file_is_ignored_and_non_utf8_pgn_is_isolated
+          --skip non_utf8_source_path_is_rejected_before_storage
+          --skip scan_and_read_failures_do_not_print_a_partial_comparison
+
+      - name: Build
+        run: cargo build --locked
+
+  install-smoke:
+    name: Clean install smoke (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Install into isolated root
+        shell: bash
+        run: |
+          set -euo pipefail
+          install_root="$RUNNER_TEMP/antiskill-install"
+          cargo install --path . --root "$install_root" --locked
+          echo "ANTISKILL_BIN=$install_root/bin/antiskill" >> "$GITHUB_ENV"
+
+      - name: Run installed binary outside the checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          smoke_root="$RUNNER_TEMP/antiskill-smoke"
+          mkdir -p "$smoke_root"
+          cd "$smoke_root"
+          "$ANTISKILL_BIN" --version
+          "$ANTISKILL_BIN" --help
+          "$ANTISKILL_BIN" init workspace
+          cd workspace
+          "$ANTISKILL_BIN" doctor
+
+  public-tree:
+    name: Public tree safety
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Check public tree
+        shell: bash
+        run: tools/check-public-tree.sh
+
+      - name: Check local documentation links
+        shell: bash
+        run: python3 tools/check-doc-links.py
+
+      - name: Check editorial consistency
+        shell: bash
+        run: python3 tools/check-editorial.py
+
+  dco:
+    name: DCO sign-off
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out pull request head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify Signed-off-by on every pull request commit
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          base='${{ github.event.pull_request.base.sha }}'
+          head='${{ github.event.pull_request.head.sha }}'
+          missing=0
+
+          while read -r commit; do
+            if ! git show -s --format='%B' "$commit" \
+              | grep -Eqi '^Signed-off-by: .+ <[^>]+>$'; then
+              echo "Missing valid Signed-off-by: $commit" >&2
+              missing=1
+            fi
+          done < <(git rev-list "$base..$head")
+
+          if [[ "$missing" -ne 0 ]]; then
+            echo >&2
+            echo "Antiskill uses DCO 1.1. Amend each commit with a sign-off, for example:" >&2
+            echo "  git commit --amend -s" >&2
+            exit 1
+          fi

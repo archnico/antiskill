@@ -1,0 +1,47 @@
+name: Bug
+description: Segnala un comportamento riproducibile che non sembra corretto
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: input
+    id: versione
+    attributes:
+      label: Versione
+      description: Output di `antiskill --version`, commit o release, se disponibile.
+
+  - type: textarea
+    id: passi
+    attributes:
+      label: Riproduzione
+      description: Il caso minimo che permette di vedere il problema.
+    validations:
+      required: true
+
+  - type: textarea
+    id: atteso
+    attributes:
+      label: Atteso
+    validations:
+      required: true
+
+  - type: textarea
+    id: osservato
+    attributes:
+      label: Osservato
+    validations:
+      required: true
+
+  - type: textarea
+    id: ambiente
+    attributes:
+      label: Ambiente
+      description: Sistema operativo e dettagli tecnici realmente utili. Non inserire hostname, username o path personali se non necessari.
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy e dati
+      options:
+        - label: Ho rimosso credenziali, dati personali non necessari e dettagli locali non utili alla riproduzione.
+          required: true

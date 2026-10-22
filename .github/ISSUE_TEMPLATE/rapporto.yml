@@ -1,0 +1,62 @@
+name: Rapporto
+description: Proponi una domanda pratica a cui Antiskill potrebbe rispondere
+title: "[Rapporto] "
+labels:
+  - area:rapporti
+body:
+  - type: input
+    id: nome
+    attributes:
+      label: Nome breve
+      placeholder: Repertorio, Torneo, Preparazione, Corpus...
+    validations:
+      required: true
+
+  - type: textarea
+    id: domanda
+    attributes:
+      label: Domanda
+      description: Cosa dovrebbe riuscire a capire l'utente dal rapporto?
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Output desiderato
+      description: Tabelle, indicatori, partite selezionate, file o esempio libero.
+
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Engine
+      description: Se non sei sicuro, scegli "Non so".
+      options:
+        - Non serve
+        - Opzionale
+        - Probabilmente serve
+        - Non so
+    validations:
+      required: true
+
+  - type: textarea
+    id: esempio
+    attributes:
+      label: Esempio d'uso
+      description: Un giocatore, torneo o workflow ipotetico. Preferisci esempi sintetici.
+
+  - type: checkboxes
+    id: collaborazione
+    attributes:
+      label: Collaborazione
+      options:
+        - label: Posso aiutare a definire cosa rende il rapporto utile.
+        - label: Mi interessa lavorare all'implementazione.
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy
+      options:
+        - label: Non sto pubblicando dati personali non necessari o corpus privati.
+          required: true

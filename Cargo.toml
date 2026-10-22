@@ -1,0 +1,22 @@
+[package]
+name = "antiskill"
+version = "0.2.0"
+edition = "2021"
+license = "EUPL-1.2"
+description = "Local, verifiable infrastructure for chess archives, search, reports, analysis, and reproducible research"
+readme = "README.md"
+repository = "https://github.com/archnico/antiskill"
+
+[[bin]]
+name = "antiskill"
+path = "src/main.rs"
+
+[dependencies]
+blake3 = "1.8.5"
+libc = "0.2.189"
+pgn-reader = "=0.29.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.145"
+shakmaty = "=0.30.1"
+ureq = "3.3.0"
+xz2 = "0.1.7"

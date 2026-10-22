@@ -1,0 +1,60 @@
+name: Contributo
+description: Proponi un miglioramento concreto, anche senza sapere già dove collocarlo
+title: ""
+labels: []
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area indicativa
+      description: Se non sei sicuro, scegli "Da classificare".
+      options:
+        - Da classificare
+        - Nucleo
+        - Ricerca
+        - Rapporti
+        - Analisi
+        - Fonti
+        - Interoperabilità
+        - Conoscenza
+        - Piattaforma
+        - Laboratorio
+        - Qualità
+    validations:
+      required: true
+
+  - type: textarea
+    id: problema
+    attributes:
+      label: Problema o miglioramento
+      description: Cosa sarebbe utile correggere o rendere possibile?
+    validations:
+      required: true
+
+  - type: textarea
+    id: contesto
+    attributes:
+      label: Contesto utile
+      description: Esempio, link, comando, caso scacchistico o altra evidenza. Può restare vuoto.
+
+  - type: textarea
+    id: proposta
+    attributes:
+      label: Proposta
+      description: Se hai già un'idea di soluzione, descrivila. Non è obbligatorio.
+
+  - type: checkboxes
+    id: lavoro
+    attributes:
+      label: Disponibilità
+      options:
+        - label: Mi interessa lavorare a questa proposta.
+        - label: Posso aiutare con test o conoscenza di dominio anche senza scrivere Rust.
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy e dati
+      options:
+        - label: Non sto allegando credenziali, corpus privati o dati personali non necessari.
+          required: true

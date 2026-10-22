@@ -1,0 +1,49 @@
+name: Idea / applicazione
+description: Proponi un uso nuovo di Antiskill senza doverne progettare subito l'architettura
+title: "[Idea] "
+labels:
+  - stato:incubazione
+body:
+  - type: textarea
+    id: problema
+    attributes:
+      label: Problema
+      description: Quale problema reale vorresti risolvere e per chi?
+    validations:
+      required: true
+
+  - type: textarea
+    id: uso
+    attributes:
+      label: Come potrebbe aiutare Antiskill
+      description: Descrivi il workflow immaginato. Non serve conoscere i moduli interni.
+    validations:
+      required: true
+
+  - type: textarea
+    id: dati
+    attributes:
+      label: Dati o fonti
+      description: Quali dati servirebbero? Se non lo sai ancora, va bene dirlo.
+
+  - type: textarea
+    id: esempio
+    attributes:
+      label: Esempio o prototipo
+      description: Link, mockup, output desiderato o prototipo, se esiste.
+
+  - type: checkboxes
+    id: collaborazione
+    attributes:
+      label: Collaborazione
+      options:
+        - label: Mi interessa contribuire alla prova di questa idea.
+        - label: Preferirei che fosse valutata prima di scrivere codice.
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy e diritti
+      options:
+        - label: Non sto pubblicando credenziali, corpus privati o dati personali non necessari.
+          required: true
