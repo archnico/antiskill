@@ -902,7 +902,10 @@ where
             println!("ANALYSIS_LINES\t{}", stored.lines);
             println!("ANALYSIS_BLAKE3\t{}", stored.blake3);
             println!("ANALYSIS_BYTES\t{}", stored.bytes);
-            println!("ANALYSIS_PATH\t{}", stored.path.display());
+            println!(
+                "ANALYSIS_PATH\t{}",
+                common::path_to_manifest_string(&stored.path)
+            );
             println!("NEW_ARTIFACT\t{}", stored.new_artifact);
             println!("ANALYSIS_STORE\tPASS");
             Ok(())
@@ -913,7 +916,10 @@ where
             println!("ANALYSIS_LINES\t{}", verified.artifact.lines.len());
             println!("ANALYSIS_BLAKE3\t{}", verified.blake3);
             println!("ANALYSIS_BYTES\t{}", verified.bytes);
-            println!("ANALYSIS_PATH\t{}", verified.path.display());
+            println!(
+                "ANALYSIS_PATH\t{}",
+                common::path_to_manifest_string(&verified.path)
+            );
             println!("ANALYSIS_VERIFY\tPASS");
             Ok(())
         }),
@@ -944,7 +950,7 @@ where
                 println!("ANALYSIS_QUALIFIED\t{}", selection.qualified);
                 println!(
                     "SELECTED_ANALYSIS_PATH\t{}",
-                    selection.selected.path.display()
+                    common::path_to_manifest_string(&selection.selected.path)
                 );
                 println!("SELECTED_ANALYSIS_BLAKE3\t{}", selection.selected.blake3);
                 println!(
@@ -972,7 +978,10 @@ where
                 for (index, artifact) in stored.artifacts.iter().enumerate() {
                     let number = index + 1;
                     println!("ANALYSIS_{number}_BLAKE3\t{}", artifact.blake3);
-                    println!("ANALYSIS_{number}_PATH\t{}", artifact.path.display());
+                    println!(
+                        "ANALYSIS_{number}_PATH\t{}",
+                        common::path_to_manifest_string(&artifact.path)
+                    );
                     println!("ANALYSIS_{number}_NEW\t{}", artifact.new_artifact);
                 }
                 println!("LICHESS_EVAL_STORE\tPASS");
@@ -995,7 +1004,10 @@ where
                 println!("ASSERTIONS\t{}", stored.assertions);
                 println!("ASSERTIONS_BLAKE3\t{}", stored.blake3);
                 println!("ASSERTIONS_BYTES\t{}", stored.bytes);
-                println!("ASSERTIONS_PATH\t{}", stored.path.display());
+                println!(
+                    "ASSERTIONS_PATH\t{}",
+                    common::path_to_manifest_string(&stored.path)
+                );
                 println!("NEW_ARTIFACT\t{}", stored.new_artifact);
                 println!("SOURCE_ASSERTIONS_STORE\tPASS");
                 Ok(())
@@ -1008,7 +1020,10 @@ where
                 println!("ASSERTIONS\t{}", verified.group.assertions.len());
                 println!("ASSERTIONS_BLAKE3\t{}", verified.blake3);
                 println!("ASSERTIONS_BYTES\t{}", verified.bytes);
-                println!("ASSERTIONS_PATH\t{}", verified.path.display());
+                println!(
+                    "ASSERTIONS_PATH\t{}",
+                    common::path_to_manifest_string(&verified.path)
+                );
                 println!("SOURCE_ASSERTIONS_VERIFY\tPASS");
                 Ok(())
             })
@@ -1046,7 +1061,10 @@ where
             println!("ANNOTATION_ITEMS\t{}", stored.items);
             println!("ANNOTATION_BLAKE3\t{}", stored.blake3);
             println!("ANNOTATION_BYTES\t{}", stored.bytes);
-            println!("ANNOTATION_PATH\t{}", stored.path.display());
+            println!(
+                "ANNOTATION_PATH\t{}",
+                common::path_to_manifest_string(&stored.path)
+            );
             println!("NEW_ARTIFACT\t{}", stored.new_artifact);
             println!("ANNOTATIONS_STORE\tPASS");
             Ok(())
@@ -1058,7 +1076,10 @@ where
                 println!("ANNOTATION_ITEMS\t{}", verified.group.items.len());
                 println!("ANNOTATION_BLAKE3\t{}", verified.blake3);
                 println!("ANNOTATION_BYTES\t{}", verified.bytes);
-                println!("ANNOTATION_PATH\t{}", verified.path.display());
+                println!(
+                    "ANNOTATION_PATH\t{}",
+                    common::path_to_manifest_string(&verified.path)
+                );
                 println!("ANNOTATIONS_VERIFY\tPASS");
                 Ok(())
             })
