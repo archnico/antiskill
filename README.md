@@ -52,6 +52,8 @@ Integrazioni di fonti, rapporti avanzati, archivio delle analisi, indice posizio
 
 ## Possibilità
 
+**Nuova proposta di ricerca:** [Antiskill Tactics — la matematica delle idee scacchistiche](docs/ANTISKILL_TACTICS.md). Un progetto per riconoscere sacrifici e motivi nelle partite reali, ritrovare esempi nelle varianti rare e generare raccolte PGN locali di partite o esercizi per tema e difficoltà. È una proposta di collaborazione, non una funzione già rilasciata.
+
 Antiskill mantiene volutamente ampio il ventaglio delle applicazioni. Una buona proposta può diventare parte del **Nucleo**, un adapter, una ricetta di rapporto, uno strato di interoperabilità, un prototipo in **Laboratorio** o un progetto complementare indipendente.
 
 Esempi: preparazione giocatore, repertori, completezza di tornei e broadcast, ricerca storica, riconciliazione federale, ricerca per posizione e trasposizione, strumenti didattici, qualità dei corpus, revisione assistita da engine, tablebase, studi scientifici e integrazioni con En Croissant o Scid.
@@ -132,6 +134,7 @@ Vedi [Contribuire](CONTRIBUIRE.md). I commit delle pull request usano il Develop
 - [Presentazione](docs/PRESENTAZIONE.md)
 - [Mappa](docs/MAPPA.md)
 - [Base comune e verticali](docs/BASE_E_VERTICALI.md)
+- [Antiskill Tactics — proposta per matematici](docs/ANTISKILL_TACTICS.md)
 - [Corpus verificato e arricchito](docs/CORPUS_VERIFICATO.md)
 - [Architettura](docs/ARCHITETTURA.md)
 - [Possibilità](docs/POSSIBILITA.md)
