@@ -1,4 +1,5 @@
 # Antiskill Tactics
+
 ## Riconoscere le idee scacchistiche
 
 **Una proposta di ricerca aperta**
@@ -23,11 +24,9 @@ Sono proposte di casi da esplorare, non un elenco chiuso:
 
 - **Sacrificio di qualità in c3 nel Dragone** — distinguere `...Rxc3` come vero sacrificio da una semplice cattura; riconoscere l'idea anche attraverso ordini di mosse diversi.
 - **Dono greco** — riconoscere il tema di `Bxh7+` (o `...Bxh2+`) e distinguerlo da sacrifici simili solo in apparenza.
-- **Doppio sacrificio degli alfieri** — riconoscere il rapporto fra due sacrifici che concorrono alla stessa combinazione.
-- **Sacrificio in h3** — individuare quando `...Bxh3`, o un altro sacrificio sulla casa, realizza un'idea tattica significativa.
+- **Doppio sacrificio degli alfieri** — riconoscere il rapporto fra due sacrifici che concorrono alla stessa combinazione di matto.
+- **Sacrificio in h3** — individuare quando `...Bxh3`, o un altro sacrificio sulla casa, realizza un'idea tattica significativa, magari solo in una linea d'apertura particolare.
 - **Infilata** — distinguere una vera conseguenza tattica dal semplice allineamento geometrico di pezzi.
-
-Per la ricerca nelle partite è essenziale distinguere ciò che **è stato realmente giocato** da ciò che sarebbe stato soltanto possibile secondo un motore.
 
 ### La domanda più ampia
 
@@ -35,11 +34,9 @@ Che cosa rende riconoscibile una stessa idea in posizioni differenti? Che cosa d
 
 Ci interesserebbe capire **quali parti di questi concetti possano essere definite e riconosciute formalmente**, quali richiedano valutazioni empiriche e dove rimanga un margine inevitabile di interpretazione.
 
-Non abbiamo scelto un metodo e non vogliamo anticipare le risposte. Ci piacerebbe discuterne con persone interessate alla matematica, alla logica, agli algoritmi o alla modellazione del giudizio umano, lasciando aperta la direzione della ricerca.
-
 ### Il contesto del progetto
 
-Antiskill può occuparsi dell'infrastruttura: conservazione delle partite originali, provenienza, ricerca, analisi ed esportazione. **Antiskill Tactics è ancora una proposta**, non una funzione già realizzata. L'obiettivo pratico resta semplice: produrre **file PGN locali**, non pubblicare automaticamente su Lichess.
+Antiskill può occuparsi dell'infrastruttura: conservazione delle partite originali, provenienza, ricerca, analisi ed esportazione. **Antiskill Tactics è ancora una proposta**, non una funzione già realizzata.
 
 **La domanda che vorremmo condividere è questa:** *si può costruire una matematica delle idee tattiche che ci permetta di ritrovarle, confrontarle e riscoprirle dentro l'intera storia delle partite giocate?*
 
