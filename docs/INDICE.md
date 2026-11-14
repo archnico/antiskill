@@ -26,6 +26,7 @@
 
 ## Prodotti
 
+- [Antiskill Tactics — matematica delle idee scacchistiche](ANTISKILL_TACTICS.md) — proposta di ricerca e collaborazione: motivi, sacrifici, raccolte PGN e difficoltà;
 - [Rapporti](RAPPORTI.md);
 - [Prestazioni](PERFORMANCE.md);
 - [Baseline prestazioni](PERFORMANCE_BASELINE_V1.md).

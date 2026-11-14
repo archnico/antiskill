@@ -42,6 +42,7 @@ Esempi già individuati:
 | **Identità scacchistica** | profilo riconciliato fra fonti e account | infrastruttura in sviluppo |
 | **Storia / record** | record e ricostruzioni verificabili | avviata sul lato Fonti/Conoscenza |
 | **Didattica** | selezione di posizioni ed esempi per studio | esplorativa |
+| **Antiskill Tactics** | PGN di partite autentiche e di esercizi per tema, apertura e livello ([proposta scientifica](ANTISKILL_TACTICS.md)) | proposta di ricerca, non implementata |
 | **Confronto ecosistemi** | confronto riproducibile OTB/Lichess/Chess.com o altre fonti | esplorativa |
 
 Questo elenco non è chiuso e gli stati cambiano. Serve a verificare se la Base sta davvero servendo usi diversi.
