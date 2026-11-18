@@ -50,6 +50,10 @@ L'obiettivo è lasciare spazio a contributi che dimostrino valore prima di decid
 - selezione automatica di esempi istruttivi;
 - esportazione verso strumenti di studio.
 
+### Tactics: complementare a Lichess
+
+La [proposta Antiskill Tactics](TACTICS.md) esplora ricerca strutturale di sacrifici e temi specifici in partite reali, validazione selettiva e curatela di esercizi esportabili. Prima di implementare ogni funzione verifica ciò che è già coperto dai problemi, dai filtri e dagli Studi Lichess: **niente duplicazione dell'allenamento o dei Gamebook**. È un'idea da validare con un confronto concreto, non una capacità già disponibile né un impegno di roadmap.
+
 ## Storia e conoscenza
 
 - albi d'oro;
