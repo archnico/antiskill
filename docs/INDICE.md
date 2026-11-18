@@ -28,6 +28,7 @@
 
 - [Rapporti](RAPPORTI.md);
 - [Prestazioni](PERFORMANCE.md);
+- [Antiskill Tactics](TACTICS.md) — ipotesi di ricerca e curatela tattica complementare a Lichess, non funzionalità implementata;
 - [Baseline prestazioni](PERFORMANCE_BASELINE_V1.md).
 
 ## Fonti
