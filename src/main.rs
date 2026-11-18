@@ -7,6 +7,7 @@ mod lab;
 mod object_store;
 mod players;
 mod sources;
+mod rankings;
 use std::env;
 use std::process::ExitCode;
 
@@ -34,6 +35,7 @@ ARCHIVIO:
 
 FONTI:
     sources      Catalogo e stato delle fonti esterne
+    rankings     Top 3 regionali e statistiche circoli da snapshot Allin
 
 TECNICI:
     inspector    Importazione ed esportazione lossless di sorgenti PGN
@@ -57,6 +59,7 @@ Per i dettagli:
     antiskill coverage --help
     antiskill players --help
     antiskill sources --help
+    antiskill rankings --help
     antiskill inspector --help
     antiskill lab --help
 ",
@@ -79,6 +82,8 @@ fn main() -> ExitCode {
         }
 
         Some("sources") => sources::run(args),
+
+        Some("rankings") => rankings::run(args),
 
         Some("init") => archive::init::run(args),
 

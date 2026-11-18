@@ -45,6 +45,7 @@ init → ingest → doctor → compare/search/duplicates/export
 | `search` | cerca per giocatore, evento e data |
 | `duplicates` | diagnostica duplicati esatti e canonici senza distruggere dati |
 | `export` | recupera occorrenze PGN originali byte-esatte |
+| `rankings` | Top 3 regionale e classifiche circoli da snapshot Allin, JSON/CSV (MVP) |
 
 `antiskill search --format json` espone il contratto strutturato e versionato `antiskill.search.v1` per script e strumenti esterni.
 
@@ -132,6 +133,7 @@ Vedi [Contribuire](CONTRIBUIRE.md). I commit delle pull request usano il Develop
 - [Presentazione](docs/PRESENTAZIONE.md)
 - [Mappa](docs/MAPPA.md)
 - [Base comune e verticali](docs/BASE_E_VERTICALI.md)
+- [Antiskill Rankings · Top 3 e circoli](docs/RANKINGS.md)
 - [Corpus verificato e arricchito](docs/CORPUS_VERIFICATO.md)
 - [Architettura](docs/ARCHITETTURA.md)
 - [Possibilità](docs/POSSIBILITA.md)

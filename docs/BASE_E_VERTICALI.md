@@ -39,6 +39,7 @@ Esempi già individuati:
 | **Repertorio / preparazione** | rapporto di repertorio e linee rilevanti | avanzata sul lato dati, prodotto da consolidare |
 | **Performance / qualità** | rapporto su risultati, errori, occasioni e partite notevoli | parziale |
 | **Torneo / popolazioni** | rapporto di torneo, copertura e confronti | specifica avviata |
+| **Rankings (regioni e circoli)** | Top 3 e statistiche per fascia, rating, mese con provenienza | MVP locale, certificazione fonti da completare |
 | **Identità scacchistica** | profilo riconciliato fra fonti e account | infrastruttura in sviluppo |
 | **Storia / record** | record e ricostruzioni verificabili | avviata sul lato Fonti/Conoscenza |
 | **Didattica** | selezione di posizioni ed esempi per studio | esplorativa |
