@@ -169,6 +169,74 @@ This is an evidence-bearing local projection, not a rewrite of the existing
 Do not publish roster snapshots (including minors' data), real names,
 account candidates or raw PGNs in the public repository.
 
+## Third-party explicit FSI ↔ FIDE ID pairs
+
+Some Italian tournament tables on [Chess-Results](https://chess-results.com/)
+show a national player ID and the FIDE ID **on the same row**.
+The service is a publisher distinct from Torneionline; its underlying
+registration data can still be shared. This evidence is never treated as
+independent solely because the domain differs.
+
+First save a small, authorized tournament snapshot in the **private** raw
+directory. The parser recognizes the `ID` and `ID FIDE` columns only if
+a strong majority (at least 80%, with at least four examples) matches
+independently known FSI/FIDE pairs. This avoids interpreting a foreign
+federation's national IDs as FSI identifiers.
+
+```sh
+python3 chess_results_pairs.py \
+  --db "$DATA/identity.sqlite3" \
+  --tournament-id 1234567 \
+  --html "$DATA/raw/chess-results/tnr1234567.html" \
+  --report "$DATA/chess-results-1234567.json"
+```
+
+The first phase stores only `external_id_pair_observation`, including
+publication URL, exact ID pair and SHA-256 source hash. It never merges IDs.
+The statuses distinguish prior corroboration, conflicts and previously
+unlinked pairs.
+
+**Certification of one specifically reviewed pair** requires all of:
+an explicit pair in the validated tournament table, an independently
+retrieved FSI membership page for that exact FSI ID and year, a current
+official FIDE record for that exact FIDE ID, compatible names and birth
+years across all three, and no contradictory mappings. This is a
+deliberately singular, non-batch operation:
+
+```sh
+python3 certify_external_pair.py --db "$DATA/identity.sqlite3" \
+  --fsi-id 900001 --fide-id 900000001 \
+  --fsi-roster "$DATA/raw/fsi-member-900001.html" \
+  --year 2026 --report "$DATA/certified-pair-900001.json"
+```
+
+Only this three-way proof may create a new `VERIFIED` link (with a
+separate audit trail in `externally_certified_crosswalk`). A second run
+must be idempotent. A name/year-only candidate never qualifies.
+
+### Fill holes in ALLIN with official FSI membership records
+
+The FSI club-roster snapshots may include valid FSI IDs absent from the
+dated ALLIN snapshot. After collecting and validating them, ingest **only
+officially published national identities and dated club memberships**:
+
+```sh
+python3 fsi_official_roster_ingest.py --db "$DATA/identity.sqlite3" \
+  --raw-dir "$DATA/raw/fsi-club-rosters" \
+  --year 2026 --report "$DATA/fsi-national-roster-ingest.json"
+```
+
+Existing names are never overwritten. Discrepancies are recorded, and
+`reported_fide_id` stays NULL for official FSI-only additions. This
+private source contains minors' records: **do not commit or redistribute
+the pages, CSV exports or derived player database**.
+
+Rerun `crosswalk_candidates.py` afterward: candidates now retain the
+actual **per-player** FSI source fingerprint, not a blanket ALLIN
+fingerprint. A pair certified by explicit IDs is retired from the
+name/year-only candidate queue with an auditable retirement record;
+other invalidated candidates fail closed pending review.
+
 ## Evidence semantics
 
 | Status | Meaning |
