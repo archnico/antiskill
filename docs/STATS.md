@@ -6,6 +6,8 @@
 
     antiskill stats --help
     antiskill stats reports
+    antiskill stats identity --fsi 192691
+    antiskill stats identity --fide 28551931 --format json
     antiskill stats movement --current /archivio/full-2026-12.json --previous /archivio/full-2026-11.json --cohort U16 --sex female --format json
     antiskill stats members --region TOS --year 2026 --by club
     antiskill stats members --region TOS --year 2026 --by club,club-province --limit 30
@@ -32,6 +34,7 @@ I dati si cercano in una directory indicata con --root oppure ANTISKILL_STATS_RO
 - **top3**: consulta i gruppi U08–U18 e absolute/female di un report Rankings già prodotto. Non esegue il calcolo e non presenta classifiche non disponibili. Rating standard, rapid, blitz, italia; il report deve avere esattamente il rating richiesto.
 - **club**: consulta il report Rankings per circolo e gli eventuali filtri originali, inclusa la fascia under. Le dimensioni non contemplate dal report non possono essere inferite.
 - **coverage**: mostra aggregati delle fonti FSI (tipologie tessera, province del circolo e province di residenza) salvati con il report regionale.
+- **identity**: interrogazione bidirezionale FSI↔FIDE dal registro privato con crosswalk esportato e prova SHA256. Si espone la coppia solo se `VERIFIED` e univoca; gli altri stati restituiscono candidati di revisione e codici di uscita distinti. Opzioni `--fsi`, `--fide`, `--format table|csv|json`, `--crosswalk` per test/snapshot esplicito. La provenienza identifica l'export e l'impronta del database sorgente; non equivale a certificazione editoriale.
 - **reports**: inventario dei report disponibili.
 - **movement**: confronto tra due report regionali mensili *integrali* e consecutivi; calcola variazione di posizione, ingressi e uscite reali dai primi N. Con report Top 3 troncati o mesi/sorgenti non confrontabili fallisce senza generare affermazioni. ID assenti da uno dei due gruppi sono `unknown`, non nuovi ingressi certificati.
 

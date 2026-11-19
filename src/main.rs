@@ -9,6 +9,7 @@ mod players;
 mod rankings;
 mod sources;
 mod stats;
+mod stats_identity;
 mod stats_movement;
 use std::env;
 use std::process::ExitCode;
