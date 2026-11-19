@@ -45,7 +45,9 @@ L'autorità indicata è sempre **contestuale**: FIDE può essere primaria per un
 - Autorità: molto alta per identità FIDE e rating mensili.
 - Strategia: snapshot immutabile di ogni mese; mai sovrascrivere le liste passate.
 - Diritti: `internal` finché non viene verificata una licenza esplicita per la redistribuzione.
-- Adapter Rankings: lettore XML locale in streaming per file legittimamente disponibili; non è implementato il download automatico della banca dati FIDE e non è autorizzata alcuna redistribuzione.
+- Adapter Rankings: lettore XML/ZIP locale in streaming per file legittimamente disponibili; import content-addressed con `antiskill sources import fide-local --root DIR --file FILE.zip --month YYYY-MM --kind standard|rapid|blitz|combined --url URL_FIDE`. Import locale, URL dichiarata dall'operatore, nessun download automatico o redistribuzione.
+- Il ponte identità può usare il CSV `--verified-links`, esportato dall'archivio nazionale in lettura mediante `scripts/export_verified_links.py`. Solo `VERIFIED` viene ammesso.
+- Per i delta mensili si usano liste ufficiali FIDE del mese corrente e immediatamente precedente. Le liste storiche separate Rapid/Blitz memorizzano il rating in `<rating>`: per questo è obbligatorio indicare `--previous-fide-kind rapid|blitz` in quei casi.
 
 ## FSI tesserati
 

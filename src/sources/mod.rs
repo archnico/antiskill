@@ -1,5 +1,6 @@
 mod context_registry;
 mod event_candidates;
+mod fide_local;
 mod fsi_calendar;
 mod fsi_members;
 mod snapshot;
@@ -267,6 +268,7 @@ USO:
     antiskill sources query vesus-linked-events --help
     antiskill sources query context-registry --help
     antiskill sources diff fsi-calendar --help
+    antiskill sources import fide-local --help
     antiskill sources sync fsi-members --root DIR --year 2026 (--club 17029 | --region TOS)
     antiskill sources sync torneionline-allin --root DIR
     antiskill sources sync torneionline-tpol --root DIR --event-code CODE
@@ -708,6 +710,24 @@ where
 
             None => {
                 eprintln!("Manca la sorgente. Usa: antiskill sources diff fsi-calendar --help");
+                ExitCode::from(2)
+            }
+        },
+
+        Some("import") => match args.next().as_deref() {
+            Some("fide-local") => match fide_local::run(args) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(error) => {
+                    eprintln!("ERRORE sources import fide-local: {error}");
+                    ExitCode::from(1)
+                }
+            },
+            Some(other) => {
+                eprintln!("Fonte import sconosciuta: {other}");
+                ExitCode::from(2)
+            }
+            None => {
+                eprintln!("Usa: antiskill sources import fide-local --help");
                 ExitCode::from(2)
             }
         },

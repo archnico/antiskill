@@ -5,8 +5,9 @@ use quick_xml::events::Event;
 use quick_xml::Reader;
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
-use std::io::BufReader;
+use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
+use std::process::{Command, Stdio};
 
 pub(super) struct FsiMember {
     pub(super) fsi_id: String,
@@ -167,9 +168,16 @@ fn parse_player(row: &HashMap<String, String>) -> Result<Option<FidePlayer>, Str
         .map(String::as_str)
         .unwrap_or("");
     let sex = row.get("sex").map(|s| s.to_uppercase()).unwrap_or_default();
+    // A few official FIDE rows carry implausible or missing birth years.
+    // Such years are UNKNOWN, not grounds to abort a 2-million-player release.
+    let birth_year = birth
+        .trim()
+        .parse::<i32>()
+        .ok()
+        .filter(|&y| (1850..=2100).contains(&y));
     Ok(Some(FidePlayer {
         fide_id: id.into(),
-        birth_year: positive_year(birth, "FIDE")?,
+        birth_year,
         sex,
         standard: field_number(row, &["rating", "std_rating", "srtng"], "Standard")?,
         rapid: field_number(row, &["rapid_rating", "rrtng"], "Rapid")?,
@@ -177,8 +185,60 @@ fn parse_player(row: &HashMap<String, String>) -> Result<Option<FidePlayer>, Str
     }))
 }
 pub(super) fn read_fide_xml(path: &Path, wanted: &HashSet<String>) -> Result<FideResult, String> {
-    let f = File::open(path).map_err(|e| format!("Apertura FIDE XML {}: {e}", path.display()))?;
-    let mut reader = Reader::from_reader(BufReader::new(f));
+    let mut file =
+        File::open(path).map_err(|e| format!("Apertura FIDE {}: {e}", path.display()))?;
+    let mut magic = [0u8; 4];
+    file.read_exact(&mut magic)
+        .map_err(|e| format!("Lettura intestazione FIDE: {e}"))?;
+    if &magic == b"PK\x03\x04" {
+        return read_fide_zip(path, wanted);
+    }
+    let f = File::open(path).map_err(|e| format!("Apertura XML FIDE: {e}"))?;
+    read_fide_reader(BufReader::new(f), wanted)
+}
+fn read_fide_zip(path: &Path, wanted: &HashSet<String>) -> Result<FideResult, String> {
+    // Open exactly one XML member, never extract an 800MB archive to disk.
+    let archive = Command::new("unzip")
+        .arg("-Z")
+        .arg("-1")
+        .arg(path)
+        .output()
+        .map_err(|e| format!("Listing ZIP FIDE (unzip richiesto): {e}"))?;
+    if !archive.status.success() {
+        return Err("ZIP FIDE invalido (listing fallito)".into());
+    }
+    let names = String::from_utf8(archive.stdout).map_err(|_| "Nomi ZIP FIDE non UTF8")?;
+    let items: Vec<&str> = names.lines().filter(|s| !s.trim().is_empty()).collect();
+    if items.len() != 1
+        || !items[0].to_ascii_lowercase().ends_with(".xml")
+        || items[0].starts_with('/')
+        || items[0].contains("..")
+    {
+        return Err("ZIP FIDE deve contenere un solo membro XML senza percorsi sospetti".into());
+    }
+    let mut child = Command::new("unzip")
+        .arg("-p")
+        .arg(path)
+        .arg(items[0])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| format!("Streaming ZIP FIDE: {e}"))?;
+    let reader = child.stdout.take().ok_or("Pipe ZIP FIDE non disponibile")?;
+    let parsed = read_fide_reader(BufReader::with_capacity(128 * 1024, reader), wanted);
+    if let Err(error) = parsed {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(format!("Parsing FIDE ZIP: {error}"));
+    }
+    let status = child.wait().map_err(|e| format!("Attesa unzip: {e}"))?;
+    if !status.success() {
+        return Err("ZIP FIDE: estrazione stream non integra".into());
+    }
+    parsed
+}
+fn read_fide_reader<R: BufRead>(source: R, wanted: &HashSet<String>) -> Result<FideResult, String> {
+    let mut reader = Reader::from_reader(source);
     reader.config_mut().trim_text(true);
     let mut buf = Vec::with_capacity(16384);
     let mut inside = false;
@@ -192,7 +252,8 @@ pub(super) fn read_fide_xml(path: &Path, wanted: &HashSet<String>) -> Result<Fid
             .map_err(|e| format!("XML FIDE: {e}"))?
         {
             Event::Start(t) => {
-                let tag = t.local_name().as_ref().to_ascii_lowercase();
+                let local = t.local_name();
+                let tag = local.as_ref();
                 if tag == "player" {
                     if inside {
                         return Err("XML FIDE: player annidati".into());
@@ -201,21 +262,48 @@ pub(super) fn read_fide_xml(path: &Path, wanted: &HashSet<String>) -> Result<Fid
                     row.clear();
                     field.clear();
                 } else if inside {
-                    field = tag
+                    // Ignore name, titles, activity and games for rating-only imports.
+                    field = match tag {
+                        "fideid" | "id_number" | "birthday" | "born" | "sex" | "rating"
+                        | "std_rating" | "srtng" | "rapid_rating" | "rrtng" | "blitz_rating"
+                        | "brtng" => tag.to_owned(),
+                        _ => String::new(),
+                    };
                 }
             }
             Event::Text(t) if inside && !field.is_empty() => {
-                row.entry(field.clone()).or_default().push_str(t.as_ref());
+                let known = field == "fideid"
+                    || field == "id_number"
+                    || row
+                        .get("fideid")
+                        .or_else(|| row.get("id_number"))
+                        .is_some_and(|id| wanted.contains(id));
+                if known {
+                    row.entry(field.clone()).or_default().push_str(t.as_ref());
+                }
             }
             Event::CData(t) if inside && !field.is_empty() => {
-                row.entry(field.clone()).or_default().push_str(t.as_ref());
+                let known = field == "fideid"
+                    || field == "id_number"
+                    || row
+                        .get("fideid")
+                        .or_else(|| row.get("id_number"))
+                        .is_some_and(|id| wanted.contains(id));
+                if known {
+                    row.entry(field.clone()).or_default().push_str(t.as_ref());
+                }
             }
             Event::End(t) => {
-                let tag = t.local_name().as_ref().to_ascii_lowercase();
+                let local = t.local_name();
+                let tag = local.as_ref();
                 if tag == "player" && inside {
                     seen += 1;
-                    if let Some(player) = parse_player(&row)? {
-                        if wanted.contains(&player.fide_id) {
+                    if row
+                        .get("fideid")
+                        .or_else(|| row.get("id_number"))
+                        .is_some_and(|id| wanted.contains(id))
+                    {
+                        if let Some(player) = parse_player(&row)? {
                             if found.insert(player.fide_id.clone(), player).is_some() {
                                 return Err("FIDE XML: ID duplicato per persona richiesta".into());
                             }

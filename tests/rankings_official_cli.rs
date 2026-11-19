@@ -266,3 +266,322 @@ fn rejects_bad_fsi_acquisition_manifest() {
     assert!(String::from_utf8_lossy(&result.stderr).contains("scope errato"));
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn consecutive_official_fide_lists_produce_only_rating_delta_without_rank_claims() {
+    let root = temp();
+    let (a, f, d) = pilot(&root);
+    let manifest = fixture_manifest(&root, &f);
+    let old = root.join("previous_october.xml");
+    write(
+        &old,
+        r#"<playerslist>
+<player><fideid>28101</fideid><birthday>2018</birthday><rating>2085</rating></player>
+<player><fideid>28102</fideid><birthday>2018</birthday><rating>2060</rating></player>
+</playerslist>"#,
+    );
+    let out = run(&[
+        "club",
+        "--snapshot",
+        a.to_str().unwrap(),
+        "--month",
+        "2026-11",
+        "--club",
+        "17029",
+        "--rating",
+        "standard",
+        "--fsi-csv",
+        f.to_str().unwrap(),
+        "--fsi-as-of",
+        "2026-11-19",
+        "--fsi-manifest",
+        manifest.to_str().unwrap(),
+        "--fide-xml",
+        d.to_str().unwrap(),
+        "--fide-month",
+        "2026-11",
+        "--previous-fide-xml",
+        old.to_str().unwrap(),
+        "--previous-fide-month",
+        "2026-10",
+        "--require-official",
+    ]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let j: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(j["previous_fide_period"], "2026-10");
+    assert_eq!(j["previous_fide_matches"], 2);
+    let entries = j["groups"][0]["players"].as_array().unwrap();
+    assert_eq!(entries[0]["rating_delta"], 15);
+    assert_eq!(entries[1]["rating_delta"], -10);
+    assert_eq!(entries[0]["previous_rank"], Value::Null);
+    assert_eq!(entries[0]["entered_top"], Value::Null);
+    assert_eq!(j["certified"], false);
+    fs::remove_dir_all(root).unwrap();
+}
+#[test]
+fn previous_fide_month_must_be_consecutive() {
+    let root = temp();
+    let (a, _f, d) = pilot(&root);
+    let bad = run(&[
+        "club",
+        "--snapshot",
+        a.to_str().unwrap(),
+        "--month",
+        "2026-11",
+        "--club",
+        "17029",
+        "--rating",
+        "standard",
+        "--fide-xml",
+        d.to_str().unwrap(),
+        "--fide-month",
+        "2026-11",
+        "--previous-fide-xml",
+        d.to_str().unwrap(),
+        "--previous-fide-month",
+        "2026-09",
+    ]);
+    assert!(!bad.status.success());
+    assert!(String::from_utf8_lossy(&bad.stderr).contains("mese immediatamente precedente"));
+    fs::remove_dir_all(root).unwrap();
+}
+#[test]
+fn fide_zip_stream_matches_plain_xml() {
+    // Production ZIP is read without expanding the archive on disk.
+    if Command::new("zip").arg("-v").output().is_err()
+        || Command::new("unzip").arg("-v").output().is_err()
+    {
+        return;
+    }
+    let root = temp();
+    let (a, f, d) = pilot(&root);
+    let archive = root.join("small-fide.zip");
+    let status = Command::new("zip")
+        .arg("-q")
+        .arg(&archive)
+        .arg(d.file_name().unwrap())
+        .current_dir(&root)
+        .status()
+        .unwrap();
+    assert!(status.success());
+    let manifest = fixture_manifest(&root, &f);
+    let out = run(&[
+        "club",
+        "--snapshot",
+        a.to_str().unwrap(),
+        "--month",
+        "2026-11",
+        "--club",
+        "17029",
+        "--rating",
+        "standard",
+        "--fsi-csv",
+        f.to_str().unwrap(),
+        "--fsi-as-of",
+        "2026-11-19",
+        "--fsi-manifest",
+        manifest.to_str().unwrap(),
+        "--fide-xml",
+        archive.to_str().unwrap(),
+        "--fide-month",
+        "2026-11",
+        "--require-official",
+    ]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let j: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(j["coverage"]["standard_rated"], 2);
+    assert_eq!(j["fide_source"]["records"], 3);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn verified_registry_links_block_review_and_unverified_rating_claims() {
+    let root = temp();
+    let (a, f, d) = pilot(&root);
+    let manifest = fixture_manifest(&root, &f);
+    let links = root.join("identity_verified.csv");
+    write(
+        &links,
+        "fsi_id,fide_id,status\n101,28101,VERIFIED\n102,28102,REVIEW\n",
+    );
+    let out = run(&[
+        "club",
+        "--snapshot",
+        a.to_str().unwrap(),
+        "--month",
+        "2026-11",
+        "--club",
+        "17029",
+        "--rating",
+        "standard",
+        "--fsi-csv",
+        f.to_str().unwrap(),
+        "--fsi-as-of",
+        "2026-11-19",
+        "--fsi-manifest",
+        manifest.to_str().unwrap(),
+        "--fide-xml",
+        d.to_str().unwrap(),
+        "--fide-month",
+        "2026-11",
+        "--verified-links",
+        links.to_str().unwrap(),
+        "--require-official",
+    ]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let j: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(j["coverage"]["registry_verified_in_scope"], 1);
+    assert_eq!(j["coverage"]["registry_nonverified_rows"], 1);
+    assert_eq!(j["coverage"]["standard_rated"], 1);
+    assert_eq!(j["groups"][0]["players"].as_array().unwrap().len(), 1);
+    assert_eq!(j["groups"][0]["players"][0]["name"], "ALFA UNO");
+    assert_eq!(
+        j["identity_source"]["authority"],
+        "verified-crosswalk-from-local-registry"
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+#[test]
+fn identity_registry_conflicts_do_not_override_fsi_fide_mismatch_silently() {
+    let root = temp();
+    let (a, f, d) = pilot(&root);
+    let manifest = fixture_manifest(&root, &f);
+    let links = root.join("identity_conflict.csv");
+    write(
+        &links,
+        "fsi_id,fide_id,status\n101,999999,VERIFIED\n102,28102,VERIFIED\n",
+    );
+    let out = run(&[
+        "club",
+        "--snapshot",
+        a.to_str().unwrap(),
+        "--month",
+        "2026-11",
+        "--club",
+        "17029",
+        "--rating",
+        "standard",
+        "--fsi-csv",
+        f.to_str().unwrap(),
+        "--fsi-as-of",
+        "2026-11-19",
+        "--fsi-manifest",
+        manifest.to_str().unwrap(),
+        "--fide-xml",
+        d.to_str().unwrap(),
+        "--fide-month",
+        "2026-11",
+        "--verified-links",
+        links.to_str().unwrap(),
+        "--require-official",
+    ]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let j: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(j["coverage"]["registry_conflicts"], 1);
+    assert_eq!(j["groups"][0]["players"].as_array().unwrap().len(), 1);
+    assert_eq!(j["groups"][0]["players"][0]["fsi_id"], "102");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn standalone_previous_rapid_uses_generic_rating_as_rapid_elo() {
+    let root = temp();
+    let (a, f, d) = pilot(&root);
+    let manifest = fixture_manifest(&root, &f);
+    let old = root.join("oct-rapid.xml");
+    write(
+        &old,
+        r#"<playerslist>
+<player><fideid>28101</fideid><birthday>2018</birthday><rating>1850</rating></player>
+<player><fideid>28102</fideid><birthday>2018</birthday><rating>1980</rating></player>
+</playerslist>"#,
+    );
+    let out = run(&[
+        "club",
+        "--snapshot",
+        a.to_str().unwrap(),
+        "--month",
+        "2026-11",
+        "--club",
+        "17029",
+        "--rating",
+        "rapid",
+        "--fsi-csv",
+        f.to_str().unwrap(),
+        "--fsi-as-of",
+        "2026-11-19",
+        "--fsi-manifest",
+        manifest.to_str().unwrap(),
+        "--fide-xml",
+        d.to_str().unwrap(),
+        "--fide-month",
+        "2026-11",
+        "--previous-fide-xml",
+        old.to_str().unwrap(),
+        "--previous-fide-month",
+        "2026-10",
+        "--previous-fide-kind",
+        "rapid",
+        "--require-official",
+    ]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let j: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(j["previous_fide_kind"], "rapid");
+    let entries = j["groups"][0]["players"].as_array().unwrap();
+    assert_eq!(entries[0]["rating_delta"], 0); // Beta: 1980 -> 1980
+    assert_eq!(entries[1]["rating_delta"], 100); // Alfa: 1850 -> 1950
+    assert_eq!(entries[0]["previous_rank"], Value::Null);
+    fs::remove_dir_all(root).unwrap();
+}
+#[test]
+fn standalone_rapid_requires_explicit_kind() {
+    let root = temp();
+    let (a, _f, d) = pilot(&root);
+    let old = root.join("oct-rapid.xml");
+    write(
+        &old,
+        "<playerslist><player><fideid>28101</fideid><rating>1800</rating></player></playerslist>",
+    );
+    let out = run(&[
+        "club",
+        "--snapshot",
+        a.to_str().unwrap(),
+        "--month",
+        "2026-11",
+        "--club",
+        "17029",
+        "--rating",
+        "rapid",
+        "--fide-xml",
+        d.to_str().unwrap(),
+        "--fide-month",
+        "2026-11",
+        "--previous-fide-xml",
+        old.to_str().unwrap(),
+        "--previous-fide-month",
+        "2026-10",
+    ]);
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("--previous-fide-kind"));
+    fs::remove_dir_all(root).unwrap();
+}

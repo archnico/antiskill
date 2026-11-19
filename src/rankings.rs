@@ -2,6 +2,8 @@
 //! This vertical consumes sources; it does not assume that Allin is an official FIDE rating list.
 #[path = "rankings/official.rs"]
 mod official;
+#[path = "rankings/verified.rs"]
+mod verified;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
@@ -102,6 +104,10 @@ struct Config {
     fide_xml: Option<PathBuf>,
     fide_month: Option<Month>,
     fsi_manifest: Option<PathBuf>,
+    previous_fide_xml: Option<PathBuf>,
+    previous_fide_month: Option<Month>,
+    previous_fide_kind: Option<String>,
+    verified_links: Option<PathBuf>,
 }
 
 fn help() {
@@ -127,6 +133,10 @@ OPZIONI:
   --fsi-manifest FILE    Manifest di acquisizione FSI con hash e scope verificabili
   --fide-xml FILE       Lista ufficiale FIDE XML estratta localmente
   --fide-month YYYY-MM  Mese nominale della lista FIDE (uguale a --month)
+  --previous-fide-xml FILE  Lista precedente FIDE (XML o ZIP)
+  --previous-fide-month YYYY-MM  Mese FIDE precedente per variazione Elo
+  --previous-fide-kind standard|rapid|blitz|combined  Formato lista storica
+  --verified-links FILE       CSV validato dal registro identità nazionale
   --require-official    Richiede FSI e FIDE e rating internazionale; fallisce chiuso
 
 NOTE:
@@ -136,10 +146,11 @@ NOTE:
   Le variazioni sono tra snapshot, non variazioni provvisorie di torneo.
   Senza snapshot precedente i delta rimangono null (mai falsi nuovi ingressi).
   I dati grezzi conservano i rispettivi diritti: nessuna pubblicazione automatica.
-  FIDE XML deve essere un file estratto da fonte autorizzata: la CLI non
+  FIDE XML o ZIP deve essere un file locale da fonte autorizzata: la CLI non
   effettua download indiscriminati né distribuisce il corpus FIDE.
-  Gli overlay ufficiali non ammettono confronti mensili fino all'arrivo
-  di snapshot ufficiali precedenti; i report restano in verifica editoriale.
+  La lista FIDE precedente permette il delta Elo ufficiale; per confrontare
+  posizioni e ingressi nel Top 3 occorre anche il roster storico FSI.
+  I report restano in verifica editoriale.
 "#
     );
 }
@@ -178,6 +189,10 @@ impl Config {
         let mut fsi_manifest = None;
         let mut fide_xml = None;
         let mut fide_month = None;
+        let mut previous_fide_xml = None;
+        let mut previous_fide_month = None;
+        let mut previous_fide_kind = None;
+        let mut verified_links = None;
         let mut require_official = false;
         while let Some(arg) = it.next() {
             if arg == "--require-official" {
@@ -185,10 +200,28 @@ impl Config {
                 continue;
             }
             let val = match arg.as_str() {
-                "--snapshot" | "--allin" | "--previous" | "--previous-allin" | "--month"
-                | "--previous-month" | "--region" | "--club" | "--under" | "--rating"
-                | "--limit" | "--format" | "--output" | "--fsi-csv" | "--fsi-as-of"
-                | "--fide-xml" | "--fide-month" | "--fsi-manifest" => it
+                "--snapshot"
+                | "--allin"
+                | "--previous"
+                | "--previous-allin"
+                | "--month"
+                | "--previous-month"
+                | "--region"
+                | "--club"
+                | "--under"
+                | "--rating"
+                | "--limit"
+                | "--format"
+                | "--output"
+                | "--fsi-csv"
+                | "--fsi-as-of"
+                | "--fide-xml"
+                | "--fide-month"
+                | "--fsi-manifest"
+                | "--previous-fide-xml"
+                | "--previous-fide-month"
+                | "--previous-fide-kind"
+                | "--verified-links" => it
                     .next()
                     .ok_or_else(|| format!("Manca un valore per {arg}"))?,
                 "--help" | "-h" => return Ok(None),
@@ -211,6 +244,10 @@ impl Config {
                 "--fide-xml" => fide_xml = Some(PathBuf::from(val)),
                 "--fide-month" => fide_month = Some(Month::parse(&val)?),
                 "--fsi-manifest" => fsi_manifest = Some(PathBuf::from(val)),
+                "--previous-fide-xml" => previous_fide_xml = Some(PathBuf::from(val)),
+                "--previous-fide-month" => previous_fide_month = Some(Month::parse(&val)?),
+                "--previous-fide-kind" => previous_fide_kind = Some(val),
+                "--verified-links" => verified_links = Some(PathBuf::from(val)),
                 _ => unreachable!(),
             }
         }
@@ -271,11 +308,41 @@ impl Config {
                 return Err("FSI as-of non coincide con il mese del report".into());
             }
         }
+        if verified_links.is_some() && fsi_csv.is_none() {
+            return Err("--verified-links richiede --fsi-csv".into());
+        }
         if fsi_manifest.is_some() && fsi_csv.is_none() {
             return Err("--fsi-manifest richiede --fsi-csv".into());
         }
         if fide_xml.is_some() != fide_month.is_some() {
             return Err("Indicare insieme --fide-xml e --fide-month".into());
+        }
+        if previous_fide_kind.is_some() && previous_fide_xml.is_none() {
+            return Err("--previous-fide-kind richiede --previous-fide-xml".into());
+        }
+        if previous_fide_xml.is_some() && rating != Rating::Standard && previous_fide_kind.is_none()
+        {
+            return Err("Per Rapid/Blitz occorre --previous-fide-kind rapid|blitz|combined".into());
+        }
+        if let Some(ref kind) = previous_fide_kind {
+            if !matches!(kind.as_str(), "standard" | "rapid" | "blitz" | "combined") {
+                return Err("Tipo lista FIDE precedente non supportato".into());
+            }
+            if (kind == "standard" && rating != Rating::Standard)
+                || (kind == "rapid" && rating != Rating::Rapid)
+                || (kind == "blitz" && rating != Rating::Blitz)
+            {
+                return Err("Tipo lista FIDE precedente incompatibile con --rating".into());
+            }
+        }
+        if previous_fide_xml.is_some() != previous_fide_month.is_some() {
+            return Err("Indicare insieme --previous-fide-xml e --previous-fide-month".into());
+        }
+        if previous_fide_xml.is_some() && (fide_xml.is_none() || rating == Rating::Italia) {
+            return Err("Confronto FIDE richiede anche --fide-xml e rating internazionale".into());
+        }
+        if previous_fide_month.is_some_and(|m| m.label() != month.previous().label()) {
+            return Err("Il confronto Elo FIDE richiede il mese immediatamente precedente".into());
         }
         if fide_month.is_some_and(|f| f.label() != month.label()) {
             return Err("Mese della lista ufficiale FIDE diverso da --month".into());
@@ -312,6 +379,10 @@ impl Config {
             fide_xml,
             fide_month,
             fsi_manifest,
+            previous_fide_xml,
+            previous_fide_month,
+            previous_fide_kind,
+            verified_links,
         }))
     }
 }
@@ -393,6 +464,7 @@ struct Snapshot {
     fide_source: Option<Source>,
     coverage: Option<Coverage>,
     fsi_manifest_proof: Option<FsiManifestProof>,
+    identity_source: Option<Source>,
 }
 fn parse_snapshot(path: &Path) -> Result<Snapshot, String> {
     let mut file = File::open(path).map_err(|e| format!("Apertura {}: {e}", path.display()))?;
@@ -480,6 +552,7 @@ fn parse_snapshot(path: &Path) -> Result<Snapshot, String> {
         fide_source: None,
         coverage: None,
         fsi_manifest_proof: None,
+        identity_source: None,
         source: Source {
             source_key: "torneionline-allin",
             filename: path
@@ -605,12 +678,17 @@ struct Report {
     previous_period: Option<String>,
     source: Source,
     previous_source: Option<Source>,
+    previous_fide_source: Option<Source>,
+    previous_fide_period: Option<String>,
+    previous_fide_kind: Option<String>,
+    previous_fide_matches: Option<usize>,
     fsi_as_of: Option<String>,
     fide_month: Option<String>,
     fsi_source: Option<Source>,
     fide_source: Option<Source>,
     coverage: Option<Coverage>,
     fsi_manifest_proof: Option<FsiManifestProof>,
+    identity_source: Option<Source>,
     membership_authority: &'static str,
     rating_authority: &'static str,
     certified: bool,
@@ -682,6 +760,7 @@ fn make_group(
     previous: Option<&Snapshot>,
     label: &str,
     sex: &str,
+    prior_fide: Option<&HashMap<String, i32>>,
 ) -> Group {
     let current_order = ordered_indices(current, cfg, cfg.month, label, sex);
     let mut previous_ranks = HashMap::<usize, usize>::new();
@@ -702,10 +781,18 @@ fn make_group(
         let match_id = previous.and_then(|prev| prev.index.lookup(p, &prev.players));
         let prev_player = previous.and_then(|prev| match_id.map(|j| &prev.players[j]));
         let prior_rank = match_id.and_then(|j| previous_ranks.get(&j).copied());
-        let delta = prev_player
-            .map(|p| p.rating(cfg.rating))
-            .filter(|&r| rated(r))
-            .map(|r| p.rating(cfg.rating) - r);
+        let delta = if let Some(prior) = prior_fide {
+            p.fide_id
+                .as_ref()
+                .and_then(|id| prior.get(id).copied())
+                .filter(|r| rated(*r))
+                .map(|r| p.rating(cfg.rating) - r)
+        } else {
+            prev_player
+                .map(|p| p.rating(cfg.rating))
+                .filter(|&r| rated(r))
+                .map(|r| p.rating(cfg.rating) - r)
+        };
         let old_top = cfg.limit.unwrap_or(usize::MAX);
         entries.push(Entry {
             rank: pos + 1,
@@ -730,14 +817,21 @@ fn make_group(
         players: entries,
     }
 }
-fn report(cfg: &Config, current: Snapshot, previous: Option<Snapshot>) -> Report {
+fn report(
+    cfg: &Config,
+    current: Snapshot,
+    previous: Option<Snapshot>,
+    prior_fide: Option<HashMap<String, i32>>,
+    prior_source: Option<Source>,
+    prior_matches: Option<usize>,
+) -> Report {
     let groups = match cfg.mode {
         Mode::Top3 => ["U08", "U10", "U12", "U14", "U16", "U18"]
             .iter()
             .flat_map(|c| {
-                ["absolute", "female"]
-                    .iter()
-                    .map(|s| make_group(cfg, &current, previous.as_ref(), c, s))
+                ["absolute", "female"].iter().map(|s| {
+                    make_group(cfg, &current, previous.as_ref(), c, s, prior_fide.as_ref())
+                })
             })
             .collect(),
         Mode::Club => {
@@ -751,6 +845,7 @@ fn report(cfg: &Config, current: Snapshot, previous: Option<Snapshot>) -> Report
                 previous.as_ref(),
                 &label,
                 "absolute",
+                prior_fide.as_ref(),
             )]
         }
     };
@@ -758,6 +853,10 @@ fn report(cfg: &Config, current: Snapshot, previous: Option<Snapshot>) -> Report
         schema:"antiskill.rankings.v1",period:cfg.month.label(),
         previous_period:cfg.previous_month.map(Month::label),
         source:current.source,previous_source:previous.map(|p|p.source),
+        previous_fide_source:prior_source,
+        previous_fide_period:cfg.previous_fide_month.map(Month::label),
+        previous_fide_kind:cfg.previous_fide_kind.clone(),
+        previous_fide_matches:prior_matches,
         fsi_as_of:cfg.fsi_as_of.clone(),
         fide_month:cfg.fide_month.map(Month::label),
         membership_authority:if current.fsi_source.is_some(){"fsi-official-csv"}else{"allin-operational"},
@@ -766,6 +865,7 @@ fn report(cfg: &Config, current: Snapshot, previous: Option<Snapshot>) -> Report
         certified:false, // Needs reviewed source and licensing/permission proof before publishing.
         fsi_source:current.fsi_source,fide_source:current.fide_source,coverage:current.coverage,
         fsi_manifest_proof:current.fsi_manifest_proof,
+        identity_source:current.identity_source,
         scope:match cfg.mode {Mode::Top3=>"top3-region".into(),Mode::Club=>"club".into()},
         rating:cfg.rating.label(),
         filters:match cfg.mode {Mode::Top3=>format!("membership-region={}, membership-year={}",cfg.region,cfg.month.year),
@@ -805,6 +905,10 @@ fn render_csv(r: &Report) -> Result<Vec<u8>, String> {
             "fsi_as_of",
             "fide_month",
             "certified",
+            "previous_fide_source_blake3",
+            "previous_fide_period",
+            "previous_fide_kind",
+            "identity_source_blake3",
         ])
         .map_err(|e| format!("CSV header: {e}"))?;
     for g in &r.groups {
@@ -846,6 +950,16 @@ fn render_csv(r: &Report) -> Result<Vec<u8>, String> {
                     r.fsi_as_of.clone().unwrap_or_default(),
                     r.fide_month.clone().unwrap_or_default(),
                     r.certified.to_string(),
+                    r.previous_fide_source
+                        .as_ref()
+                        .map(|s| s.blake3.clone())
+                        .unwrap_or_default(),
+                    r.previous_fide_period.clone().unwrap_or_default(),
+                    r.previous_fide_kind.clone().unwrap_or_default(),
+                    r.identity_source
+                        .as_ref()
+                        .map(|s| s.blake3.clone())
+                        .unwrap_or_default(),
                 ])
                 .map_err(|e| format!("CSV record: {e}"))?;
         }
@@ -898,6 +1012,9 @@ struct Coverage {
     club_provinces: std::collections::BTreeMap<String, usize>,
     residence_provinces: std::collections::BTreeMap<String, usize>,
     distinct_clubs: usize,
+    registry_verified_in_scope: usize,
+    registry_conflicts: usize,
+    registry_nonverified_rows: usize,
 }
 fn local_source(
     path: &Path,
@@ -1039,7 +1156,28 @@ fn enrich_official(cfg: &Config, mut current: Snapshot) -> Result<Snapshot, Stri
         club_provinces: Default::default(),
         residence_provinces: Default::default(),
         distinct_clubs: 0,
+        registry_verified_in_scope: 0,
+        registry_conflicts: 0,
+        registry_nonverified_rows: 0,
     };
+    let registry = cfg
+        .verified_links
+        .as_ref()
+        .map(|p| verified::read_links(p))
+        .transpose()?;
+    if let Some(ref links) = registry {
+        covered.registry_nonverified_rows = links.review;
+        let path = cfg
+            .verified_links
+            .as_ref()
+            .expect("validated registry path");
+        current.identity_source = Some(local_source(
+            path,
+            "identity-registry-crosswalk",
+            links.total,
+            "verified-crosswalk-from-local-registry",
+        )?);
+    }
     if let Some(path) = &cfg.fsi_csv {
         let members = official::read_fsi(path)?;
         let old_players = std::mem::take(&mut current.players);
@@ -1079,7 +1217,24 @@ fn enrich_official(cfg: &Config, mut current: Snapshot) -> Result<Snapshot, Stri
             if old.is_some() {
                 covered.members_linked_to_allin += 1;
             }
-            let fide_id = old.and_then(|p| p.fide_id.clone());
+            let fide_id = if let Some(ref links) = registry {
+                let link = links.links.get(&member.fsi_id).cloned();
+                if link.is_some() {
+                    covered.registry_verified_in_scope += 1;
+                }
+                if link
+                    .as_ref()
+                    .zip(old.and_then(|p| p.fide_id.as_ref()))
+                    .is_some_and(|(a, b)| a != b)
+                {
+                    covered.registry_conflicts += 1;
+                    None
+                } else {
+                    link
+                }
+            } else {
+                old.and_then(|p| p.fide_id.clone())
+            };
             if fide_id.is_some() {
                 covered.members_with_fide_id += 1;
             }
@@ -1215,7 +1370,51 @@ fn execute(cfg: Config) -> Result<(), String> {
             );
         }
     }
-    let r = report(&cfg, current, previous);
+    let (old_ratings, prior_source, prior_matches) = if let Some(path) = &cfg.previous_fide_xml {
+        let wanted = current
+            .players
+            .iter()
+            .filter_map(|p| p.fide_id.clone())
+            .collect::<std::collections::HashSet<_>>();
+        let results = official::read_fide_xml(path, &wanted)?;
+        let matches = results.found.len();
+        let map = results
+            .found
+            .into_iter()
+            .map(|(id, p)| {
+                let rating = match cfg.rating {
+                    Rating::Standard => p.standard,
+                    Rating::Rapid if cfg.previous_fide_kind.as_deref() == Some("rapid") => {
+                        p.standard
+                    }
+                    Rating::Blitz if cfg.previous_fide_kind.as_deref() == Some("blitz") => {
+                        p.standard
+                    }
+                    Rating::Rapid => p.rapid,
+                    Rating::Blitz => p.blitz,
+                    Rating::Italia => 0,
+                };
+                (id, rating)
+            })
+            .collect::<HashMap<String, i32>>();
+        let source = local_source(
+            path,
+            "fide-rating-list",
+            results.seen,
+            "official-fide-prior-month-local-xml-or-zip",
+        )?;
+        (Some(map), Some(source), Some(matches))
+    } else {
+        (None, None, None)
+    };
+    let r = report(
+        &cfg,
+        current,
+        previous,
+        old_ratings,
+        prior_source,
+        prior_matches,
+    );
     let bytes = if cfg.format == "csv" {
         render_csv(&r)?
     } else {
