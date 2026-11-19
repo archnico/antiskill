@@ -130,6 +130,19 @@ python3 fsi_club_roster_probe.py --db "$DATA/identity.sqlite3" \
   --report "$DATA/fsi-clubs-probe.json" --max-clubs 4
 ```
 
+To review the **entire** unlinked crosswalk locally without further
+network requests, rank independent FSI checks first:
+
+```sh
+python3 candidate_review_queue.py --db "$DATA/identity.sqlite3" \
+  --out-csv "$DATA/candidates_to_review.csv" \
+  --summary-json "$DATA/candidate_review_summary.json"
+```
+
+The queue is private, CSV-formula-safe, sorted by conflict/corroboration
+priority and retains both original source hashes. Rows with corroborated
+FSI official names are **still unverified as FSI↔FIDE pairs**.
+
 Both tools have enforced bounded network requests and a minimum delay; parsing
 fails closed on count, club, year and ID disagreement. Even a
 `FSI_ROSTER_CORROBORATED` observation means **only the FSI record has been
