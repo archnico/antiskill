@@ -1,41 +1,53 @@
-# Antiskill Rankings · verticale v1
+# Antiskill Rankings · Top 3, tesseramenti e statistiche circoli
 
-**Stato:** MVP locale da certificare sulle serie storiche. Non pubblica automaticamente dati di tesserati, classifiche o report.
+**Stato:** verticale locale eseguibile, dati non certificati per pubblicazione automatica. Niente pubblicazione diretta di elenchi di minori.
 
-## Perché una verticale
+## Fonti, precedenza, periodo
 
-Una singola Base conserva evidenza, provenienza e identità; Rankings calcola viste riproducibili per regione, circolo e fascia giovanile. Non crea una pipeline parallela per acquisire Allin: riusa `antiskill sources sync torneionline-allin --root DIR`, che produce oggetti immutabili content-addressed. La sorgente v1 rimane un CSV Allin fornito esplicitamente dall'operatore.
+1. **FSI tesserati (autorità per affiliazioni):** il nuovo connettore sources sync fsi-members importa un CSV ufficiale senza intestazione (15 colonne). Richiede anno e un filtro obbligatorio per circolo o regione di affiliazione. Salva snapshot e manifest con BLAKE3. Il CSV fornisce ID FSI, nome, anno di nascita, società, province, regione della società e tipo tessera, ma non l'ID FIDE.
+2. **FIDE rating lists (autorità per rating Standard/Rapid/Blitz):** parser XML in streaming che conserva in memoria soltanto gli ID FIDE necessari. Il file XML estratto è fornito dall'operatore se ne ha il diritto; Antiskill non esegue download né redistribuisce la banca dati FIDE senza autorizzazione.
+3. **Torneionline Allin:** conserva il collegamento operativo fra ID FSI e FIDE. Non decide lo stato del tesseramento o il rating FIDE. Il CSV Allin era ancora fermo ad aprile 2026 nel controllo del 19 novembre 2026.
 
-## Esempi
+Con ID ambigui o anno di nascita discordante non viene attribuito il rating. Un giocatore presente in FSI ma non in Allin resta nel censimento, anche se non può essere abbinato a un Elo. Quando viene fornito l'XML FIDE, un rating mancante non ricade su quello obsoleto di Allin.
 
-```bash
-antiskill rankings top3 --snapshot /dati/allin_2026-11.csv --month 2026-11 --region TOS
-antiskill rankings top3 --snapshot /dati/allin_2026-11.csv --month 2026-11 \
-  --previous /dati/allin_2026-10.csv --previous-month 2026-10 --format csv
-antiskill rankings club --snapshot /dati/allin_2026-11.csv --month 2026-11 \
-  --club 17029 --rating standard
-antiskill rankings club --snapshot /dati/allin_2026-11.csv --month 2026-11 \
-  --club 17029 --rating rapid --under 18 --output /dati/report-rapid-u18.json
-```
+## Comandi essenziali
 
-## Regole
+    antiskill sources sync fsi-members --root /archivio --year 2026 --club 17029
+    antiskill sources sync fsi-members --root /archivio --year 2026 --region TOS
 
-- `top3`: 12 gruppi U08/U10/U12/U14/U16/U18 × assoluta/femminile; ogni gruppo max 3 per default, ordinato Elo decrescente e poi nominativo/ID per risolvere i pari rating in modo **tecnico**, non sportivo. U08 include anche bambini più giovani della soglia.
-- `club`: vista di tutti i tesserati del codice società indicato (nessun limite di posizioni); opzionalmente filtro `--under 18`, rating Standard o Rapid.
-- Regione = **Regione Tesseramento**, non Regione Residenza; società = **Circolo Attuale**; è richiesto `Anno Ultimo Tesseramento` uguale all'anno del periodo richiesto. Nessun aggiornamento viene dedotto dalla data di esecuzione.
-- Rating 0 (non attribuito) e 1399 (sentinella nei workflow storici) non entrano in classifica. Le soglie e i criteri federali vigenti richiedono una revisione prima della certificazione.
-- La variazione Elo è calcolata sull'**intero snapshot precedente**, anche se il giocatore era fuori Top 3. Prima si risolve l'identità con ID FSI e FIDE; il nome completo + nascita + sesso è fallback solo se univoco. Identità ambigue producono delta null, mai confronti indovinati.
-- Variazione posizione: confronto della stessa classifica, ricalcolata sullo snapshot precedente. `entered_top` distingue gli ingressi in classifica. Senza fonte storica precedente, delta e ingressi restano null.
-- Mesi precedenti soltanto consecutivi in v1. Un file precedente uguale al corrente è rifiutato. `--month` è dichiarato dall'operatore: va riconciliato alla data di pubblicazione reale del dataset.
-- JSON: contratto `antiskill.rankings.v1`; CSV: tabella piatta. Impronte BLAKE3 dei file sorgente presenti nell'output, percorso locale non esposto (soltanto filename).
-- Output `--output` mai sovrascritto, niente invii esterni, niente dati personali nel repository.
+    antiskill rankings club --snapshot /dati/allin.csv --month 2026-11 --club 17029 \
+      --fsi-csv /dati/fsi-club.csv --fsi-as-of 2026-11-19 --rating standard
 
-## Limiti e debiti prima della certificazione pubblica
+    antiskill rankings top3 --snapshot /dati/allin.csv --month 2026-11 --region TOS \
+      --fsi-csv /dati/fsi-regione.csv --fsi-as-of 2026-11-19 \
+      --fsi-manifest /dati/fsi-manifest.json \
+      --fide-xml /dati/fide-2026-11.xml --fide-month 2026-11 \
+      --rating standard --require-official --output /rapporti/novembre.json
 
-1. Integrare snapshot mensili **ufficiali FIDE** per Elo Standard/Rapid/Blitz e FSI per affiliazioni e tesseramento. I rating in Allin sono una copia operativa, non la fonte autoritativa.
-2. Certificare sui report storici pubblicati e correggere eventuali differenze di regole U8, pari merito, nazionalità, disponibilità rating, anno sportivo e 1399.
-3. Esporre `snapshot_id` dei manifest acquisizione e implementare import diretto della Base con controlli di copertura, freschezza e anomalie.
-4. Separare pubblicazione editoriale da dati interni: privacy dei minori, verifica diritti, consenso/criteri di pubblicazione, doppia approvazione per output pubblico.
-5. Aggiungere serie storiche, classifiche social e spiegazione delle variazioni a partire dai tornei, solo dopo controllo risultati ufficiali.
+Il flag --require-official obbliga a fornire FSI+manifest verificabile+FIDE e un rating internazionale; non significa che l'autenticità delle fonti o i diritti siano automaticamente certificati.
 
-**Garanzia attuale:** motore locale deterministico testato, non graduatoria federale certificata.
+## Report
+
+- Top 3: dodici gruppi U08–U18, assoluta e femminile; rating decrescente, poi nome/ID come spareggio tecnico. U08 comprende anche i bambini più piccoli.
+- Circolo: società federale con filtri Standard/Rapid/Blitz, età giovanile e limite opzionale.
+- JSON antiskill.rankings.v1 oppure CSV, con impronte BLAKE3 di tutte le fonti, dichiarazioni del mese FIDE e acquisizione FSI, etichette delle autorità e campo certified sempre false.
+- Coverage FSI: totale tesserati, collegati ad Allin, disponibili su FIDE, rating presenti, tipologie tessera, conteggi per provincia del circolo e residenza, circoli distinti.
+- Rating zero e 1399 esclusi come convenzione pilota da certificare con le regole federali vigenti.
+
+## Limitazioni intenzionali
+
+- --fsi-as-of e --fide-month sono dichiarati dall'operatore: senza controllo del manifest e della release non sono prova sufficiente della freschezza. La data di acquisizione FSI è registrata nel manifest: quando fornito via --fsi-manifest, il programma verifica scope, URL, HTTP 200, BLAKE3, dimensione e congruenza del giorno.
+- I confronti storici con fonti ufficiali sono rifiutati finché non esistono snapshot ufficiali comparabili di entrambi i mesi. I confronti Allin storici restano operativi ma non ufficiali.
+- La lista FSI CSV non contiene il sesso; la classifica femminile può usare il dato FIDE, altrimenti il ponte Allin, con copertura incompleta esplicitata dal report.
+- Per il Top 3 regionale una esportazione limitata a un singolo club è rifiutata; per un report completo deve essere preservato l'export regionale integrale.
+- Non distribuire né pubblicare dati grezzi FIDE/FSI senza verificare termini d'uso, riservatezza e diritti dei minori.
+
+## Debiti di maturità
+
+1. Riconciliare manifest FSI verificati e ID release FIDE nel report, con controllo integrità/freschezza.
+2. Confrontare tre mesi storici con i report canonici, inclusi pari Elo, criteri U08, categoria e società.
+3. Supportare confronto fra due mesi di fonti FSI+FIDE ufficiali.
+4. Migliorare la copertura degli identificativi senza deduplicazioni distruttive.
+5. Approvazione editoriale preventiva alla pubblicazione di classifiche dei minori.
+
+**Garanzia:** calcolo locale deterministico e fonti separatamente attribuite, non classifica federale già certificata.

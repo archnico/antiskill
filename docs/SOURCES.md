@@ -45,17 +45,19 @@ L'autorità indicata è sempre **contestuale**: FIDE può essere primaria per un
 - Autorità: molto alta per identità FIDE e rating mensili.
 - Strategia: snapshot immutabile di ogni mese; mai sovrascrivere le liste passate.
 - Diritti: `internal` finché non viene verificata una licenza esplicita per la redistribuzione.
+- Adapter Rankings: lettore XML locale in streaming per file legittimamente disponibili; non è implementato il download automatico della banca dati FIDE e non è autorizzata alcuna redistribuzione.
 
 ## FSI tesserati
 
 - Chiave: `fsi-members`
 - Pagina ufficiale: <https://www.federscacchi.com/fsi/index.php/struttura/tesserati>
 - Cadenza proposta: giornaliera per l'anno corrente.
-- Utilità: ID FSI, nome, sesso, nascita, categoria, cittadinanza, società, codice società e tipo di tessera.
+- Utilità: ID FSI, nome, nascita, categoria, cittadinanza, società, codice società, provincia e tipo tessera. **Il CSV ufficiale a 15 colonne non include il sesso**: quando servono classifiche femminili occorre l'attribuzione da un'altra fonte verificata.
 - Accesso preferito: esportazione CSV ufficiale quando disponibile; HTML soltanto come fallback verificato.
 - Autorità: molto alta per lo stato del tesseramento italiano.
 - Strategia: snapshot annuali e delta giornalieri; segmentare le interrogazioni se la vista impone limiti.
 - Diritti: `internal`.
+- Adapter attivo (19/11/2026): `antiskill sources sync fsi-members --root DIR --year 2026 --club 17029` oppure `--region TOS`. Il connettore usa l'export CSV ufficiale, controlla 15 colonne e filtri, conserva oggetti e manifest BLAKE3. La vista Rankings accetta `--fsi-csv --fsi-as-of [--fsi-manifest]`; i risultati restano non certificati per pubblicazione.
 
 ## FSI persone
 

@@ -1,5 +1,7 @@
 //! Reproducible local rankings from immutable Allin CSV snapshots.
 //! This vertical consumes sources; it does not assume that Allin is an official FIDE rating list.
+#[path = "rankings/official.rs"]
+mod official;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
@@ -95,6 +97,11 @@ struct Config {
     limit: Option<usize>,
     format: String,
     output: Option<PathBuf>,
+    fsi_csv: Option<PathBuf>,
+    fsi_as_of: Option<String>,
+    fide_xml: Option<PathBuf>,
+    fide_month: Option<Month>,
+    fsi_manifest: Option<PathBuf>,
 }
 
 fn help() {
@@ -115,6 +122,12 @@ OPZIONI:
   --limit N             Numero massimo per gruppo (top3: 3; club: tutti)
   --format json|csv     Default: json, versione antiskill.rankings.v1
   --output FILE         Crea un nuovo file; rifiuta sovrascritture
+  --fsi-csv FILE        CSV ufficiale FSI, senza intestazione (15 colonne)
+  --fsi-as-of YYYY-MM-DD  Data di acquisizione FSI, nello stesso mese del report
+  --fsi-manifest FILE    Manifest di acquisizione FSI con hash e scope verificabili
+  --fide-xml FILE       Lista ufficiale FIDE XML estratta localmente
+  --fide-month YYYY-MM  Mese nominale della lista FIDE (uguale a --month)
+  --require-official    Richiede FSI e FIDE e rating internazionale; fallisce chiuso
 
 NOTE:
   --month identifica il periodo attribuito dall'operatore allo snapshot: non
@@ -123,6 +136,10 @@ NOTE:
   Le variazioni sono tra snapshot, non variazioni provvisorie di torneo.
   Senza snapshot precedente i delta rimangono null (mai falsi nuovi ingressi).
   I dati grezzi conservano i rispettivi diritti: nessuna pubblicazione automatica.
+  FIDE XML deve essere un file estratto da fonte autorizzata: la CLI non
+  effettua download indiscriminati né distribuisce il corpus FIDE.
+  Gli overlay ufficiali non ammettono confronti mensili fino all'arrivo
+  di snapshot ufficiali precedenti; i report restano in verifica editoriale.
 "#
     );
 }
@@ -156,11 +173,22 @@ impl Config {
         let mut limit = if mode == Mode::Top3 { Some(3) } else { None };
         let mut format = "json".to_string();
         let mut output = None;
+        let mut fsi_csv = None;
+        let mut fsi_as_of = None;
+        let mut fsi_manifest = None;
+        let mut fide_xml = None;
+        let mut fide_month = None;
+        let mut require_official = false;
         while let Some(arg) = it.next() {
+            if arg == "--require-official" {
+                require_official = true;
+                continue;
+            }
             let val = match arg.as_str() {
                 "--snapshot" | "--allin" | "--previous" | "--previous-allin" | "--month"
                 | "--previous-month" | "--region" | "--club" | "--under" | "--rating"
-                | "--limit" | "--format" | "--output" => it
+                | "--limit" | "--format" | "--output" | "--fsi-csv" | "--fsi-as-of"
+                | "--fide-xml" | "--fide-month" | "--fsi-manifest" => it
                     .next()
                     .ok_or_else(|| format!("Manca un valore per {arg}"))?,
                 "--help" | "-h" => return Ok(None),
@@ -178,6 +206,11 @@ impl Config {
                 "--limit" => limit = Some(val.parse::<usize>().map_err(|_| "Limite non valido")?),
                 "--format" => format = val,
                 "--output" => output = Some(PathBuf::from(val)),
+                "--fsi-csv" => fsi_csv = Some(PathBuf::from(val)),
+                "--fsi-as-of" => fsi_as_of = Some(val),
+                "--fide-xml" => fide_xml = Some(PathBuf::from(val)),
+                "--fide-month" => fide_month = Some(Month::parse(&val)?),
+                "--fsi-manifest" => fsi_manifest = Some(PathBuf::from(val)),
                 _ => unreachable!(),
             }
         }
@@ -219,6 +252,48 @@ impl Config {
                 return Err("--limit deve essere positivo".into());
             }
         }
+        if fsi_csv.is_some() != fsi_as_of.is_some() {
+            return Err("Indicare insieme --fsi-csv e --fsi-as-of".into());
+        }
+        if let Some(ref date) = fsi_as_of {
+            let (ym, day) = date
+                .rsplit_once('-')
+                .ok_or("Data FSI richiesta YYYY-MM-DD")?;
+            let period = Month::parse(ym)?;
+            if date.len() != 10
+                || day.len() != 2
+                || !day.bytes().all(|b| b.is_ascii_digit())
+                || !(1..=31).contains(&day.parse::<u8>().map_err(|_| "Data FSI errata")?)
+            {
+                return Err("Data FSI richiesta YYYY-MM-DD".into());
+            }
+            if period.label() != month.label() {
+                return Err("FSI as-of non coincide con il mese del report".into());
+            }
+        }
+        if fsi_manifest.is_some() && fsi_csv.is_none() {
+            return Err("--fsi-manifest richiede --fsi-csv".into());
+        }
+        if fide_xml.is_some() != fide_month.is_some() {
+            return Err("Indicare insieme --fide-xml e --fide-month".into());
+        }
+        if fide_month.is_some_and(|f| f.label() != month.label()) {
+            return Err("Mese della lista ufficiale FIDE diverso da --month".into());
+        }
+        if (fsi_csv.is_some() || fide_xml.is_some()) && previous.is_some() {
+            return Err("Confronto storico con fonti ufficiali richiede entrambe le liste precedenti: non supportato in v2".into());
+        }
+        if require_official
+            && (fsi_csv.is_none()
+                || fide_xml.is_none()
+                || rating == Rating::Italia
+                || fsi_manifest.is_none())
+        {
+            return Err(
+                "--require-official richiede --fsi-csv, --fsi-manifest, --fide-xml e --rating standard|rapid|blitz"
+                    .into(),
+            );
+        }
         Ok(Some(Self {
             mode,
             month,
@@ -232,6 +307,11 @@ impl Config {
             limit,
             format,
             output,
+            fsi_csv,
+            fsi_as_of,
+            fide_xml,
+            fide_month,
+            fsi_manifest,
         }))
     }
 }
@@ -309,6 +389,10 @@ struct Snapshot {
     players: Vec<Player>,
     source: Source,
     index: IdentityIndex,
+    fsi_source: Option<Source>,
+    fide_source: Option<Source>,
+    coverage: Option<Coverage>,
+    fsi_manifest_proof: Option<FsiManifestProof>,
 }
 fn parse_snapshot(path: &Path) -> Result<Snapshot, String> {
     let mut file = File::open(path).map_err(|e| format!("Apertura {}: {e}", path.display()))?;
@@ -392,6 +476,10 @@ fn parse_snapshot(path: &Path) -> Result<Snapshot, String> {
     Ok(Snapshot {
         players,
         index,
+        fsi_source: None,
+        fide_source: None,
+        coverage: None,
+        fsi_manifest_proof: None,
         source: Source {
             source_key: "torneionline-allin",
             filename: path
@@ -517,6 +605,15 @@ struct Report {
     previous_period: Option<String>,
     source: Source,
     previous_source: Option<Source>,
+    fsi_as_of: Option<String>,
+    fide_month: Option<String>,
+    fsi_source: Option<Source>,
+    fide_source: Option<Source>,
+    coverage: Option<Coverage>,
+    fsi_manifest_proof: Option<FsiManifestProof>,
+    membership_authority: &'static str,
+    rating_authority: &'static str,
+    certified: bool,
     scope: String,
     rating: &'static str,
     filters: String,
@@ -661,12 +758,20 @@ fn report(cfg: &Config, current: Snapshot, previous: Option<Snapshot>) -> Report
         schema:"antiskill.rankings.v1",period:cfg.month.label(),
         previous_period:cfg.previous_month.map(Month::label),
         source:current.source,previous_source:previous.map(|p|p.source),
+        fsi_as_of:cfg.fsi_as_of.clone(),
+        fide_month:cfg.fide_month.map(Month::label),
+        membership_authority:if current.fsi_source.is_some(){"fsi-official-csv"}else{"allin-operational"},
+        rating_authority:if cfg.rating==Rating::Italia {"allin-operational"}
+            else if current.fide_source.is_some(){"fide-official-xml"}else{"allin-operational"},
+        certified:false, // Needs reviewed source and licensing/permission proof before publishing.
+        fsi_source:current.fsi_source,fide_source:current.fide_source,coverage:current.coverage,
+        fsi_manifest_proof:current.fsi_manifest_proof,
         scope:match cfg.mode {Mode::Top3=>"top3-region".into(),Mode::Club=>"club".into()},
         rating:cfg.rating.label(),
         filters:match cfg.mode {Mode::Top3=>format!("membership-region={}, membership-year={}",cfg.region,cfg.month.year),
             Mode::Club=>format!("club={}, membership-year={}, under={}",cfg.club.as_deref().unwrap_or(""),cfg.month.year,
                 cfg.under.map(|u|u.to_string()).unwrap_or_else(||"all".into()))},
-        note:"Allin operational snapshot; verify FIDE ratings and FSI memberships against authoritative releases before public publication.",
+        note:"Local ranking draft; FIDE/FSI CSV/XML inputs, source periods, rights and publication of minors require independent approval.",
         groups,
     }
 }
@@ -693,6 +798,13 @@ fn render_csv(r: &Report) -> Result<Vec<u8>, String> {
             "entered_top",
             "source_blake3",
             "previous_source_blake3",
+            "fsi_source_blake3",
+            "fide_source_blake3",
+            "membership_authority",
+            "rating_authority",
+            "fsi_as_of",
+            "fide_month",
+            "certified",
         ])
         .map_err(|e| format!("CSV header: {e}"))?;
     for g in &r.groups {
@@ -721,6 +833,19 @@ fn render_csv(r: &Report) -> Result<Vec<u8>, String> {
                         .as_ref()
                         .map(|x| x.blake3.clone())
                         .unwrap_or_default(),
+                    r.fsi_source
+                        .as_ref()
+                        .map(|x| x.blake3.clone())
+                        .unwrap_or_default(),
+                    r.fide_source
+                        .as_ref()
+                        .map(|x| x.blake3.clone())
+                        .unwrap_or_default(),
+                    r.membership_authority.to_string(),
+                    r.rating_authority.to_string(),
+                    r.fsi_as_of.clone().unwrap_or_default(),
+                    r.fide_month.clone().unwrap_or_default(),
+                    r.certified.to_string(),
                 ])
                 .map_err(|e| format!("CSV record: {e}"))?;
         }
@@ -759,8 +884,325 @@ fn emit(path: Option<&Path>, data: &[u8]) -> Result<(), String> {
         }
     }
 }
+
+#[derive(Debug, Serialize)]
+struct Coverage {
+    membership_records: usize,
+    members_linked_to_allin: usize,
+    members_with_fide_id: usize,
+    fide_records_matched: usize,
+    standard_rated: usize,
+    rapid_rated: usize,
+    blitz_rated: usize,
+    membership_types: std::collections::BTreeMap<String, usize>,
+    club_provinces: std::collections::BTreeMap<String, usize>,
+    residence_provinces: std::collections::BTreeMap<String, usize>,
+    distinct_clubs: usize,
+}
+fn local_source(
+    path: &Path,
+    key: &'static str,
+    records: usize,
+    authority: &'static str,
+) -> Result<Source, String> {
+    let mut file = File::open(path)
+        .map_err(|e| format!("Apertura fonte ufficiale {}: {e}", path.display()))?;
+    let mut hash = blake3::Hasher::new();
+    let mut buffer = [0u8; 65536];
+    loop {
+        let n = file
+            .read(&mut buffer)
+            .map_err(|e| format!("Lettura fonte {}: {e}", path.display()))?;
+        if n == 0 {
+            break;
+        }
+        hash.update(&buffer[..n]);
+    }
+    Ok(Source {
+        source_key: key,
+        filename: path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string(),
+        blake3: hash.finalize().to_hex().to_string(),
+        records,
+        authority,
+    })
+}
+#[derive(Debug, Serialize)]
+struct FsiManifestProof {
+    source_key: String,
+    fetched_at_unix_ms: u64,
+    manifest_blake3: String,
+    verified: bool,
+}
+fn days_from_civil(year: i32, month: i32, day: i32) -> i64 {
+    // Gregorian calendar day count relative to 1970-01-01.
+    let y = year - if month <= 2 { 1 } else { 0 };
+    let era = (if y >= 0 { y } else { y - 399 }) / 400;
+    let yoe = y - era * 400;
+    let mp = month + if month > 2 { -3 } else { 9 };
+    let doy = (153 * mp + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    i64::from(era * 146097 + doe - 719468)
+}
+fn verify_fsi_manifest(
+    path: &Path,
+    source: &Source,
+    csv_path: &Path,
+    expected_key: &str,
+    as_of: &str,
+    report_month: Month,
+) -> Result<FsiManifestProof, String> {
+    let data =
+        fs::read(path).map_err(|e| format!("Lettura manifest FSI {}: {e}", path.display()))?;
+    let v: serde_json::Value =
+        serde_json::from_slice(&data).map_err(|e| format!("Manifest FSI non JSON: {e}"))?;
+    let source_key = v
+        .get("source_key")
+        .and_then(|v| v.as_str())
+        .ok_or("Manifest FSI senza source_key")?;
+    if source_key != expected_key {
+        return Err(format!(
+            "Manifest FSI scope errato: {source_key}; previsto {expected_key}"
+        ));
+    }
+    if v.get("schema_version").and_then(|v| v.as_u64()) != Some(1) {
+        return Err("Schema manifest FSI non supportato".into());
+    }
+    if v.get("source_url").and_then(|v| v.as_str())
+        != Some("https://www.federscacchi.com/fsi/FSI_Programmi/tesserati_csv.php")
+    {
+        return Err("Manifest FSI non proviene dall'endpoint ufficiale previsto".into());
+    }
+    if v.get("http_status").and_then(|v| v.as_u64()) != Some(200) {
+        return Err("Manifest FSI senza HTTP 200".into());
+    }
+    if v.get("blake3").and_then(|v| v.as_str()) != Some(source.blake3.as_str()) {
+        return Err(
+            "BLAKE3 del CSV FSI diverso dal manifest: possibile file errato/manomesso".into(),
+        );
+    }
+    let bytes = v
+        .get("bytes")
+        .and_then(|v| v.as_u64())
+        .ok_or("Manifest FSI senza dimensione")?;
+    let fetched_at = v
+        .get("fetched_at_unix_ms")
+        .and_then(|v| v.as_u64())
+        .ok_or("Manifest FSI senza timestamp acquisizione")?;
+    if bytes == 0
+        || fetched_at == 0
+        || fs::metadata(csv_path)
+            .map_err(|e| format!("FSI CSV stat: {e}"))?
+            .len()
+            != bytes
+    {
+        return Err("Dimensione CSV non corrisponde al manifest FSI".into());
+    }
+    let parts = as_of.split('-').collect::<Vec<_>>();
+    if parts.len() != 3 {
+        return Err("Data FSI as-of non valida".into());
+    }
+    let (y, m, d) = (
+        parts[0].parse::<i32>().map_err(|_| "Anno non valido")?,
+        parts[1].parse::<i32>().map_err(|_| "Mese non valido")?,
+        parts[2].parse::<i32>().map_err(|_| "Giorno non valido")?,
+    );
+    if y != report_month.year || m != i32::from(report_month.month) {
+        return Err("Manifest FSI associato a periodo diverso dal report".into());
+    }
+    let declared = days_from_civil(y, m, d);
+    let acquired = (fetched_at / 86_400_000) as i64;
+    if (declared - acquired).abs() > 1 {
+        return Err("FSI --fsi-as-of non corrisponde alla data registrata dal manifest".into());
+    }
+    Ok(FsiManifestProof {
+        source_key: source_key.to_owned(),
+        fetched_at_unix_ms: fetched_at,
+        manifest_blake3: blake3::hash(&data).to_hex().to_string(),
+        verified: true,
+    })
+}
+
+fn enrich_official(cfg: &Config, mut current: Snapshot) -> Result<Snapshot, String> {
+    let mut covered = Coverage {
+        membership_records: current.players.len(),
+        members_linked_to_allin: 0,
+        members_with_fide_id: 0,
+        fide_records_matched: 0,
+        standard_rated: 0,
+        rapid_rated: 0,
+        blitz_rated: 0,
+        membership_types: Default::default(),
+        club_provinces: Default::default(),
+        residence_provinces: Default::default(),
+        distinct_clubs: 0,
+    };
+    if let Some(path) = &cfg.fsi_csv {
+        let members = official::read_fsi(path)?;
+        let old_players = std::mem::take(&mut current.players);
+        let old_index = IdentityIndex::build(&old_players);
+        let mut players = Vec::with_capacity(members.len());
+        let mut club_ids = std::collections::HashSet::<String>::new();
+        for member in members {
+            if cfg.mode == Mode::Club && member.club != cfg.club.as_deref().unwrap_or("") {
+                return Err(format!(
+                    "FSI CSV contiene società {} diversa da --club: importazione rifiutata",
+                    member.club
+                ));
+            }
+            if cfg.mode == Mode::Top3 && member.club_region != cfg.region {
+                return Err(format!(
+                    "FSI CSV contiene regione {} diversa da --region: importazione rifiutata",
+                    member.club_region
+                ));
+            }
+            club_ids.insert(member.club.clone());
+            *covered
+                .membership_types
+                .entry(member.membership_type.clone())
+                .or_default() += 1;
+            *covered
+                .club_provinces
+                .entry(member.club_province.clone())
+                .or_default() += 1;
+            *covered
+                .residence_provinces
+                .entry(member.residence_province.clone())
+                .or_default() += 1;
+            let idx = old_index.fsi.get(&member.fsi_id).copied().flatten();
+            let old = idx
+                .and_then(|n| old_players.get(n))
+                .filter(|p| p.year.zip(member.birth_year).is_none_or(|(a, b)| a == b));
+            if old.is_some() {
+                covered.members_linked_to_allin += 1;
+            }
+            let fide_id = old.and_then(|p| p.fide_id.clone());
+            if fide_id.is_some() {
+                covered.members_with_fide_id += 1;
+            }
+            players.push(Player {
+                name: member.name,
+                fsi_id: Some(member.fsi_id),
+                fide_id,
+                year: member.birth_year,
+                sex: old.map(|p| p.sex.clone()).unwrap_or_default(),
+                region: member.club_region,
+                club: member.club,
+                membership_year: Some(cfg.month.year),
+                category: member.category,
+                italian: old.map_or(0, |p| p.italian),
+                standard: old.map_or(0, |p| p.standard),
+                rapid: old.map_or(0, |p| p.rapid),
+                blitz: old.map_or(0, |p| p.blitz),
+            });
+        }
+        if cfg.mode == Mode::Top3 && club_ids.len() < 2 {
+            return Err("Fonte FSI regionale troppo ristretta (un solo club): usare export regionale completo".into());
+        }
+        covered.membership_records = players.len();
+        covered.distinct_clubs = club_ids.len();
+        current.fsi_source = Some(local_source(
+            path,
+            "fsi-members",
+            players.len(),
+            "official-fsi-scoped-export",
+        )?);
+        if let (Some(manifest), Some(source)) = (&cfg.fsi_manifest, current.fsi_source.as_ref()) {
+            let expected_key = match cfg.mode {
+                Mode::Top3 => format!(
+                    "fsi-members-region-{}-{}",
+                    cfg.region.to_ascii_lowercase(),
+                    cfg.month.year
+                ),
+                Mode::Club => format!(
+                    "fsi-members-club-{}-{}",
+                    cfg.club.as_deref().unwrap_or(""),
+                    cfg.month.year
+                ),
+            };
+            current.fsi_manifest_proof = Some(verify_fsi_manifest(
+                manifest,
+                source,
+                path,
+                &expected_key,
+                cfg.fsi_as_of.as_deref().unwrap_or(""),
+                cfg.month,
+            )?);
+        }
+        current.players = players;
+        current.index = IdentityIndex::build(&current.players);
+    }
+    if let Some(path) = &cfg.fide_xml {
+        let ids = current
+            .players
+            .iter()
+            .filter_map(|p| p.fide_id.clone())
+            .collect::<std::collections::HashSet<_>>();
+        if ids.is_empty() {
+            return Err(
+                "Nessun FIDE ID riconciliato da Allin: rating ufficiale non assegnabile".into(),
+            );
+        }
+        let ratings = official::read_fide_xml(path, &ids)?;
+        if ratings.found.is_empty() {
+            return Err(
+                "FIDE XML non contiene nessuno dei giocatori collegati: report rifiutato".into(),
+            );
+        }
+        covered.fide_records_matched = ratings.found.len();
+        for p in &mut current.players {
+            // Never fall back to stale operational Allin ratings in official mode.
+            p.standard = 0;
+            p.rapid = 0;
+            p.blitz = 0;
+            if let Some(ref fide) = p.fide_id {
+                if let Some(r) = ratings.found.get(fide) {
+                    if p.year.zip(r.birth_year).is_some_and(|(a, b)| a != b) {
+                        // Flagging is safer than assigning an unrelated player's rating.
+                        continue;
+                    }
+                    p.standard = r.standard;
+                    p.rapid = r.rapid;
+                    p.blitz = r.blitz;
+                    if !r.sex.is_empty() {
+                        p.sex = r.sex.clone();
+                    }
+                    if p.year.is_none() {
+                        p.year = r.birth_year;
+                    }
+                }
+            }
+        }
+        current.fide_source = Some(local_source(
+            path,
+            "fide-rating-list",
+            ratings.seen,
+            "official-fide-monthly-xml-user-supplied",
+        )?);
+        current.index = IdentityIndex::build(&current.players);
+    }
+    covered.members_with_fide_id = current
+        .players
+        .iter()
+        .filter(|p| p.fide_id.is_some())
+        .count();
+    covered.standard_rated = current.players.iter().filter(|p| rated(p.standard)).count();
+    covered.rapid_rated = current.players.iter().filter(|p| rated(p.rapid)).count();
+    covered.blitz_rated = current.players.iter().filter(|p| rated(p.blitz)).count();
+    current.coverage = Some(covered);
+    Ok(current)
+}
+
 fn execute(cfg: Config) -> Result<(), String> {
     let current = parse_snapshot(&cfg.snapshot)?;
+    let current = if cfg.fsi_csv.is_some() || cfg.fide_xml.is_some() {
+        enrich_official(&cfg, current)?
+    } else {
+        current
+    };
     let previous = cfg
         .previous
         .as_ref()
