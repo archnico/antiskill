@@ -237,6 +237,47 @@ fingerprint. A pair certified by explicit IDs is retired from the
 name/year-only candidate queue with an auditable retirement record;
 other invalidated candidates fail closed pending review.
 
+## External pair reconciliation and contradictions
+
+As tournaments are ingested, `external_id_pair_observation.pair_status` is
+an **immutable snapshot** of how the pair looked at the time of import.
+Never edit those observations after verification; instead regenerate
+the private *current* state through:
+
+```sh
+python3 external_pair_review_queue.py --db "$DATA/identity.sqlite3" \
+  --out-csv "$DATA/external_pairs_current.csv" \
+  --summary-json "$DATA/external_pairs_current.json"
+```
+
+Its FSI-ID scope is protected. Mixed-federation tournament tables count
+only `FED=ITA` rows toward the national Italian crosswalk: a foreign
+national ID from the same Swiss-Manager tournament is **not** an FSI ID.
+Entire pages with insufficient previously known Italian ID pairs fail
+closed. Names or spellings alone cannot certify an ID. The queue
+preserves older classifications while recomputing each pair's actual
+`VERIFIED_NOW`, `CANDIDATE_WITH_EXPLICIT_IDS`,
+`DISPUTED_EXISTING_LINK` and `CONFLICT_REVIEW` status.
+It stores IDs and source URLs only, not names or dates of birth.
+
+If Chess-Results explicitly agrees with an existing ALLIN pair but the
+official FSI and FIDE documents disagree on name or year of birth,
+**do not promote REVIEW**. Keep the source fingerprints and the conflict
+in a separate evidence table:
+
+```sh
+python3 audit_external_conflict.py --db "$DATA/identity.sqlite3" \
+  --fsi-id 900001 --fide-id 900000001 \
+  --fsi-roster "$DATA/raw/fsi-member-900001.html" \
+  --year 2026 --report "$DATA/external-conflict-900001.json"
+```
+
+`crosswalk_conflict_evidence` captures source-specific SHA-256,
+discrepant years and the original review state; it **never** corrects
+a federation register, merges a person or creates `VERIFIED` links.
+The official FSI HTML parser supports both `Nato nel` and
+`Nata nel` (the gendered wording on the member card).
+
 ## Evidence semantics
 
 | Status | Meaning |

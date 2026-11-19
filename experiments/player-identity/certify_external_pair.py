@@ -83,10 +83,12 @@ def certify(dbpath:Path, fsi_id:int, fide_id:int, roster:Path, year:int):
             raise ValueError("Missing source fingerprint for current FIDE snapshot")
         ext=db.execute("""SELECT * FROM external_id_pair_observation
               WHERE fsi_id=? AND fide_id=? AND pair_status IN (
-                'UNLINKED_ID_PAIR','AGREES_VERIFIED')
+                'UNLINKED_ID_PAIR','MATCHES_CANDIDATE','AGREES_VERIFIED')
               ORDER BY source_key LIMIT 1""",(fsi_id,fide_id)).fetchone()
         if ext is None:
             raise ValueError("No explicit ID-pair source observation")
+        if ext["federation"].upper()!="ITA":
+            raise ValueError("Tournament row national ID does not belong to Italian federation")
         if signature(ext["observed_name"])!=signature(official_name):
             raise ValueError("Chess-Results event name differs from official FSI")
         source_ext=db.execute("SELECT sha256 FROM source WHERE source_key=?",

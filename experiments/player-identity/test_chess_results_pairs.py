@@ -67,6 +67,25 @@ class SwissManagerCrosswalkTests(unittest.TestCase):
                 self.assertEqual(db.execute("SELECT birth_year FROM fsi_player WHERE fsi_id=3001").fetchone()[0],2003)
                 self.assertEqual(db.execute("PRAGMA integrity_check").fetchone()[0],"ok")
 
+    def test_candidate_label_is_not_automatic_but_explicit_three_way_proof_may_verify(self):
+        with tempfile.TemporaryDirectory() as root:
+            p=Path(root); dbpath=p/"id.sqlite3";create_db(dbpath)
+            # A name/year candidate is not certified; it is merely a review lead.
+            with sqlite3.connect(dbpath) as db:
+                db.execute("INSERT INTO crosswalk_candidate VALUES (?,?)",
+                           (3001,900000001))
+                self.assertEqual(db.execute(
+                    "SELECT count(*) FROM identity_link WHERE fsi_id=3001").fetchone()[0],0)
+            f=p/"tnr1364644.html";f.write_bytes(tournament_html())
+            summary=import_tournament(dbpath,1364644,f,p/"report.json")
+            self.assertEqual(summary["classifications"]["MATCHES_CANDIDATE"],1)
+            official=p/"official.html";official.write_bytes(roster())
+            certified=certify(dbpath,3001,900000001,official,2026)
+            self.assertEqual(certified["new_verified_links"],1)
+            with sqlite3.connect(dbpath) as db:
+                self.assertEqual(db.execute(
+                    "SELECT count(*) FROM identity_link WHERE fsi_id=3001 AND status='VERIFIED'").fetchone()[0],1)
+
     def test_mismatched_primary_sources_fail_without_writes(self):
         with tempfile.TemporaryDirectory() as root:
             p=Path(root)
@@ -87,6 +106,21 @@ class SwissManagerCrosswalkTests(unittest.TestCase):
                                                   b"name=anno value=2025"))
             with self.assertRaisesRegex(ValueError,"does not declare requested year"):
                 certify(dbpath,3001,900000001,official,2026)
+
+    def test_foreign_player_national_ids_are_excluded_from_fsi_namespace(self):
+        with tempfile.TemporaryDirectory() as root:
+            p=Path(root); dbpath=p/"id.sqlite3";create_db(dbpath)
+            foreign=(b"<tr><td>6</td><td>Foreign, Player</td>"
+                     b"<td>99991</td><td>99992</td><td>GER</td></tr>")
+            raw=tournament_html().replace(b"</table>",foreign+b"</table>")
+            f=p/"tnr1364644.html";f.write_bytes(raw)
+            result=import_tournament(dbpath,1364644,f,p/"report.json")
+            self.assertEqual(result["foreign_national_id_rows_excluded"],1)
+            self.assertEqual(result["explicit_pairs"],5)
+            with sqlite3.connect(dbpath) as db:
+                self.assertEqual(db.execute(
+                   "SELECT count(*) FROM external_id_pair_observation WHERE fsi_id=99991"
+                ).fetchone()[0],0)
 
     def test_nonitalian_national_id_semantics_fail(self):
         with tempfile.TemporaryDirectory() as root:

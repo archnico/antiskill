@@ -102,7 +102,13 @@ def import_tournament(dbpath:Path,tournament_id:int,html_path:Path,report_path:P
     if html_path.name!=f"tnr{tournament_id}.html":
         raise ValueError("Tournament file identity mismatch")
     raw=html_path.read_bytes()
-    pair_rows=parse_tournament(raw)
+    all_pairs=parse_tournament(raw)
+    # A Swiss-Manager national ID belongs to the listed federation, not
+    # necessarily to FSI. Keep mixed-federation rows in the raw HTML only.
+    pair_rows=[row for row in all_pairs if row[3].strip().upper()=="ITA"]
+    excluded_foreign=len(all_pairs)-len(pair_rows)
+    if len(pair_rows)<5:
+        raise ValueError("Not enough Italian national/FIDE ID pairs to validate FSI semantics")
     hash_=hashlib.sha256(raw).hexdigest()
     source_key=f"chess-results-{tournament_id}-{hash_[:12]}"
     source_url=f"https://s3.chess-results.com/tnr{tournament_id}.aspx?SNode=S0&lan=20"
@@ -148,7 +154,9 @@ def import_tournament(dbpath:Path,tournament_id:int,html_path:Path,report_path:P
             raise RuntimeError("Integrity check failed")
         out={"tournament_id":tournament_id,"sha256":hash_,
              "source_key":source_key,"source_url":source_url,
-             "explicit_pairs":len(pair_rows),"baseline_verified":verified,
+             "explicit_pairs":len(pair_rows),
+             "foreign_national_id_rows_excluded":excluded_foreign,
+             "baseline_verified":verified,
              "baseline_ratio":round(verified/len(pair_rows),4),
              "classifications":dict(statuses),
              "identity_links_created":0,

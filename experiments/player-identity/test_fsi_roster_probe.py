@@ -13,6 +13,9 @@ class FsiRosterTests(unittest.TestCase):
     def test_parse_anchored_exact_fsi_id_and_birth_year(self):
         self.assertEqual(parse_roster(html(100,'ROSSI MARIO',1984),100),
                          ('PARSED','ROSSI MARIO',1984))
+        # Official FSI roster says "Nata nel" for female members.
+        female=html(100,'VERDI ELENA',1986).replace(b'Nato nel',b'Nata nel')
+        self.assertEqual(parse_roster(female,100),('PARSED','VERDI ELENA',1986))
         self.assertEqual(parse_roster(html(101,'ROSSI MARIO',1984),100)[0],
                          'FSI_ROSTER_UNPARSEABLE')
         self.assertEqual(parse_roster(b'Trovati <B>0</B> giocatori.',100)[0],

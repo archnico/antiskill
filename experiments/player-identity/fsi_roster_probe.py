@@ -48,7 +48,7 @@ def parse_roster(raw, fsi_id):
     found_name=re.search(
         r"<!--\s*nome giocatore\s*-->.*?<B>\s*(?:&nbsp;|\s)*(.*?)</B>",
         part,re.I|re.S)
-    found_year=re.search(r"Nato nel(?:\s|&nbsp;)*<B>\s*(\d{4})\s*</B>",part,re.I|re.S)
+    found_year=re.search(r"Nat[oa] nel(?:\s|&nbsp;)*<B>\s*(\d{4})\s*</B>",part,re.I|re.S)
     if not found_name or not found_year:
         return ("FSI_ROSTER_UNPARSEABLE",None,None)
     name=html.unescape(re.sub(r"<[^>]*>","",found_name.group(1))).strip()
