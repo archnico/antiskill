@@ -177,3 +177,69 @@ fn broken_hash_and_unscoped_queries_fail_closed() {
     assert!(String::from_utf8_lossy(&out.stderr).contains("BLAKE3/size"));
     fs::remove_dir_all(r).unwrap();
 }
+
+#[test]
+fn latest_period_prefers_only_authoritative_managed_report_and_rejects_other_ambiguity() {
+    let root = work();
+    fixture(&root);
+    let first = root.join("reports/rankings-fixtures/top3.json");
+    let mut old: Value = serde_json::from_slice(&fs::read(&first).unwrap()).unwrap();
+    old["period"] = json!("2026-10");
+    fs::write(
+        root.join("reports/rankings-fixtures/oct.json"),
+        serde_json::to_vec(&old).unwrap(),
+    )
+    .unwrap();
+    let res = cmd(
+        &root,
+        &[
+            "top3", "--region", "TOS", "--cohort", "U18", "--format", "json",
+        ],
+    );
+    assert!(
+        res.status.success(),
+        "{}",
+        String::from_utf8_lossy(&res.stderr)
+    );
+    let j: Value = serde_json::from_slice(&res.stdout).unwrap();
+    assert_eq!(j["meta"]["period"], "2026-11");
+    let duplicate = root.join("reports/rankings-fixtures/duplicate.json");
+    fs::copy(&first, &duplicate).unwrap();
+    let bad = cmd(&root, &["top3", "--region", "TOS"]);
+    assert!(!bad.status.success());
+    assert!(String::from_utf8_lossy(&bad.stderr).contains("report compatibili"));
+    let managed = root.join("reports/rankings-2026-11-managed");
+    fs::create_dir_all(&managed).unwrap();
+    let mut promoted: Value = serde_json::from_slice(&fs::read(&first).unwrap()).unwrap();
+    promoted["groups"][0]["players"][0]["rating"] = json!(1900);
+    fs::write(
+        managed.join("top3.json"),
+        serde_json::to_vec(&promoted).unwrap(),
+    )
+    .unwrap();
+    let latest = cmd(
+        &root,
+        &[
+            "top3", "--region", "TOS", "--cohort", "U18", "--format", "json",
+        ],
+    );
+    assert!(
+        latest.status.success(),
+        "{}",
+        String::from_utf8_lossy(&latest.stderr)
+    );
+    let j: Value = serde_json::from_slice(&latest.stdout).unwrap();
+    assert_eq!(j["rows"][0]["rating"], 1900);
+    let explicit = cmd(
+        &root,
+        &[
+            "top3", "--region", "TOS", "--month", "2026-11", "--format", "json",
+        ],
+    );
+    assert!(
+        explicit.status.success(),
+        "{}",
+        String::from_utf8_lossy(&explicit.stderr)
+    );
+    fs::remove_dir_all(root).unwrap();
+}

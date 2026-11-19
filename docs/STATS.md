@@ -6,13 +6,19 @@
 
     antiskill stats --help
     antiskill stats reports
+    antiskill stats identity --fsi 192691
+    antiskill stats identity --fide 28551931 --format json
+    antiskill stats movement --current /archivio/full-2026-12.json --previous /archivio/full-2026-11.json --cohort U16 --sex female --format json
     antiskill stats members --region TOS --year 2026 --by club
     antiskill stats members --region TOS --year 2026 --by club,club-province --limit 30
     antiskill stats members --region TOS --year 2026 --by club,type --under 18
     antiskill stats members --region TOS --year 2026 --club 17029 --by type
     antiskill stats members --club 17029 --year 2026 --by category
+    antiskill stats top3 --region TOS --rating standard  # ultimo report disponibile
     antiskill stats top3 --region TOS --month 2026-11 --rating standard
+    antiskill stats top3 --region TOS --rating standard  # ultimo report disponibile
     antiskill stats top3 --region TOS --month 2026-11 --rating standard --cohort U16 --sex female
+    antiskill stats club --club 17029 --rating standard  # ultimo report disponibile
     antiskill stats club --club 17029 --month 2026-11 --rating standard
     antiskill stats club --club 17029 --month 2026-11 --rating rapid --under 18
     antiskill stats coverage --region TOS --month 2026-11 --by club-province
@@ -28,12 +34,15 @@ I dati si cercano in una directory indicata con --root oppure ANTISKILL_STATS_RO
 - **top3**: consulta i gruppi U08–U18 e absolute/female di un report Rankings già prodotto. Non esegue il calcolo e non presenta classifiche non disponibili. Rating standard, rapid, blitz, italia; il report deve avere esattamente il rating richiesto.
 - **club**: consulta il report Rankings per circolo e gli eventuali filtri originali, inclusa la fascia under. Le dimensioni non contemplate dal report non possono essere inferite.
 - **coverage**: mostra aggregati delle fonti FSI (tipologie tessera, province del circolo e province di residenza) salvati con il report regionale.
+- **identity** arricchito: dal profilo privato mensile (attualmente novembre 2026) mostra cognome, nome, nome completo, anno di nascita (mai giorno/mese non documentati), codice nazionalità quando presente nella fonte FSI ufficiale, federazione FIDE, categoria FSI e relativa fonte, titolo FIDE distinto ed Elo FIDE Standard/Rapid/Blitz. Rating non presente/0 diventa `null`, non rating 0; tutti gli Elo sono riconducibili al mese ZIP FIDE. Se l'indice manca o non coincide con il crosswalk verificato non si inventano campi. La cache viene aggiornata dal manutentore giornaliero quando cambia mese FIDE, FSI o registro identità.
+- **identity**: interrogazione bidirezionale FSI↔FIDE dal registro privato con crosswalk esportato e prova SHA256. Si espone la coppia solo se `VERIFIED` e univoca; gli altri stati restituiscono candidati di revisione e codici di uscita distinti. Opzioni `--fsi`, `--fide`, `--format table|csv|json`, `--crosswalk` per test/snapshot esplicito. La provenienza identifica l'export e l'impronta del database sorgente; non equivale a certificazione editoriale.
 - **reports**: inventario dei report disponibili.
+- **movement**: confronto tra due report regionali mensili *integrali* e consecutivi; calcola variazione di posizione, ingressi e uscite reali dai primi N. Con report Top 3 troncati o mesi/sorgenti non confrontabili fallisce senza generare affermazioni. ID assenti da uno dei due gruppi sono `unknown`, non nuovi ingressi certificati.
 
 ## Garanzie e limiti
 
 1. Lettura locale, niente download impliciti. I manifest FSI sono controllati per source key, HTTP status, dimensione e BLAKE3; una sostituzione della fonte porta a errore.
-2. Su report con stesso scope/periodo/rating si richiede --report FILE anziché scegliere arbitrariamente.
+2. Senza --month si usa il periodo disponibile più recente. Se più report hanno medesimo scope/periodo/rating viene preferito esclusivamente l'unico report `rankings-YYYY-MM-managed` promosso dall'orchestratore dopo validazione atomica. Se il report gestito non esiste oppure vi sono più candidati senza autorità univoca, si richiede --report FILE; nessun report viene scelto arbitrariamente.
 3. Le statistiche riportano periodo, fonte, impronte, autorità e stato di certificazione. Un report senza rating FIDE non viene presentato come classifica FIDE.
 4. La regione indicata per i tesserati è quella **di affiliazione del circolo**, non la residenza. Per la residenza esiste il raggruppamento residence-province.
 5. L'età viene valutata rispetto all'anno richiesto, in convenzione anno solare. Il sesso non è presente nell'export FSI: per statistiche femminili si possono usare solo report che contengano dati compatibili e dichiarino la relativa copertura.
