@@ -13,6 +13,36 @@ m=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 
 class StatsMaintenanceTests(unittest.TestCase):
+    def test_scoped_identity_changes_only_when_roster_relevant_ids_change(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td)
+            roster=root/"tuscany.csv"
+            roster.write_text(
+                "100;A;ONE;2010;NC;FI;TOSCANA;ITA;17029;ASD;FI;TOSCANA;TG;1;TG\n"
+                "200;B;TWO;2011;NC;PI;TOSCANA;ITA;17031;ASD;PI;TOSCANA;TJ;2;TJ\n")
+            members={"path":str(roster),"source_key":"fsi-members-region-tos-2026",
+                     "digest":"a"*64}
+            old=root/"durable"/"identity"/"verified-fsi-fide-old.csv"
+            old.parent.mkdir(parents=True)
+            old.write_text("fsi_id,fide_id,status\n100,28100,VERIFIED\n200,28200,REVIEW\n")
+            changed_out=root/"new.csv"
+            changed_out.write_text(
+                "fsi_id,fide_id,status\n100,28100,VERIFIED\n200,28200,REVIEW\n900,28900,VERIFIED\n")
+            assert m.scoped_identity_digest(old,[members])==m.scoped_identity_digest(changed_out,[members])
+            version=root/"reports"/"versions"/"2026-11"/"base"
+            version.mkdir(parents=True)
+            (version/"run-meta.json").write_text(json.dumps({
+                "sources":{"fsi-members-region-tos-2026":"a"*64},
+                "identity_sha256":m.sha256(old)}))
+            link=root/"reports"/"rankings-2026-11-managed"
+            link.symlink_to(version,target_is_directory=True)
+            self.assertTrue(m.already_promoted_same_scope(
+                root,link,[members],changed_out,m.scoped_identity_digest(changed_out,[members])))
+            changed_in=root/"different.csv"
+            changed_in.write_text("fsi_id,fide_id,status\n100,28100,REVIEW\n200,28200,REVIEW\n")
+            self.assertFalse(m.already_promoted_same_scope(
+                root,link,[members],changed_in,m.scoped_identity_digest(changed_in,[members])))
+
     def test_previous_month(self):
         self.assertEqual(m.previous_month("2026-01"),"2025-12")
         self.assertEqual(m.previous_month("2026-11"),"2026-10")

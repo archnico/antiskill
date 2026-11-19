@@ -9,7 +9,7 @@ La sincronizzazione è quotidiana con timer systemd utente alle 06:20 (+ jitter 
 2. Conserva oggetti BLAKE3, manifest e snapshot precedenti. Se lo scaricamento fallisce, il precedente resta disponibile, ma lo stato espone l'errore; il report corrente non viene sostituito.
 3. Esporta dal registro SQLite attuale soltanto i collegamenti FSI–FIDE VERIFIED, in un nuovo CSV privato con provenienza SHA256, senza sovrascrivere versioni precedenti. La build fallisce chiusa se il registro non è coerente.
 4. Esamina l'inbox privata di ZIP FIDE già ottenuti lecitamente. Il download indiscriminato non viene eseguito.
-5. Per il mese corrente con lista FIDE combinata e liste FIDE del mese precedente, calcola tre report: Top3 Toscana Standard, Firenze Standard e Firenze Rapid U18. La lista precedente può essere combined o standalone per Standard/Rapid; la variazione Elo è la differenza delle liste FIDE ufficiali, mai Allin.
+5. Per il mese corrente con lista FIDE combinata e liste FIDE del mese precedente, calcola tre report di consultazione: Top3 Toscana Standard, Firenze Standard e Firenze Rapid U18. Genera inoltre una vista integrale dei ranghi regionali in `support/top3-tos-standard-full.json`, per confronti futuri senza attribuire ingressi da elenchi Top 3 troncati. La lista precedente può essere combined o standalone per Standard/Rapid; la variazione Elo è la differenza delle liste FIDE ufficiali, mai Allin.
 6. Ogni report deve superare controllo schema, mese, provenienza FSI/FIDE e mancata certificazione. Il set completo viene promosso tramite symlink atomico `reports/rankings-YYYY-MM-managed`. Versioni precedenti immutabili in `reports/versions/YYYY-MM/`.
 7. Gli aggiornamenti FSI non cambiano i report mensili se il contenuto BLAKE3 non cambia. La CLI `members` usa il roster FSI più recente. Report diversi o incompleti non vengono selezionati silenziosamente.
 
@@ -60,3 +60,13 @@ Il valore `url` deve essere esattamente il link FIDE reale del file, non quello 
 - Le classifiche vengono archiviate solo quando tutte le tre viste superano i controlli. Non si attribuisce il valore "aggiornato" a un mese non disponibile.
 - `antiskill stats freshness` mostra l'ultimo refresh e mese disponibile; è l'indicatore operativo, non un'approvazione editoriale.
 - L'inbox non è uno scraper. I file FIDE vanno forniti con provenienza e diritti adeguati. Il timer non scarica automaticamente da FIDE.
+
+## Confronto delle posizioni
+
+Il report regionale integrale di novembre 2026 è conservato separatamente in `reports/full-snapshots/2026-11/top3-tos-standard-full.json`. I prossimi report gestiti includono il loro snapshot integrale dentro `support/`. Quando il file integrale precedente esiste, la pipeline prova a calcolare anche la vista di movimento U16 assoluta in `support/movement-u16-absolute.json`; se non è provabile resta `pending` e il report Elo corrente continua a funzionare. Solo quando esiste uno snapshot equivalente del mese precedente (roster FSI rilevato nello stesso mese e report FIDE ufficiale completo) si può eseguire:
+
+```bash
+antiskill stats movement --current /percorso/full-2026-12.json --previous /percorso/full-2026-11.json --cohort U16 --sex female --format json
+```
+
+Un Top 3 con tre giocatori per fascia **non** basta: `movement` lo rifiuta. Assenze dalle liste complete vengono indicate come **unknown**, non come ingresso/uscita certa. Si confrontano solo mesi consecutivi, stesso rating e regione, identificatori coerenti e manifest FSI verificati.

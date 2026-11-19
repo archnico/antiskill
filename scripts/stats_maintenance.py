@@ -2,6 +2,7 @@
 """Private, idempotent Antiskill Stats maintenance on archival coordinator n2."""
 from __future__ import annotations
 import argparse
+import csv
 import datetime as dt
 import fcntl
 import hashlib
@@ -16,7 +17,7 @@ from zoneinfo import ZoneInfo
 ROME = ZoneInfo("Europe/Rome")
 KEYS = ("fsi-members-region-tos", "fsi-members-club-17029")
 ROOT_DEFAULT = Path("/srv/archive/chess/antiskill")
-BINARY_DEFAULT = Path("/home/nico/src/antiskill-stats-cli-20261119/target/debug/antiskill")
+BINARY_DEFAULT = Path("/home/nico/src/antiskill-stats-cli-20261119/target/release/antiskill")
 INBOX_DEFAULT = Path("/home/nico/.local/state/antiskill-stats/fide-inbox")
 IDENTITY_DEFAULT = Path("/srv/archive/chess/antiskill/durable/identity/verified-fsi-fide-2026-11-19.csv")
 REGISTRY_DEFAULT = Path("/srv/archive/chess/identity-registry")
@@ -127,6 +128,59 @@ def latest_fide(root):
     keys=list((root/"raw"/"refs").glob("fide-rating-combined-????-??.json"))
     return sorted(p.stem.removeprefix("fide-rating-combined-") for p in keys)[-1] if keys else None
 
+def scoped_identity_digest(identity, rosters):
+    """Hash only relevant FSI identities, including unverified/conflicting assertions."""
+    members = set()
+    for obj in rosters:
+        with open(obj["path"], encoding="utf-8-sig", newline="") as handle:
+            for row in csv.reader(handle, delimiter=";"):
+                if len(row) != 15:
+                    raise ValueError("Roster FSI non valido durante fingerprint")
+                members.add(row[0])
+    scoped = []
+    seen = set()
+    with open(identity, encoding="utf-8", newline="") as handle:
+        rd = csv.DictReader(handle)
+        if rd.fieldnames != ["fsi_id", "fide_id", "status"]:
+            raise ValueError("Intestazione crosswalk identità incompatibile")
+        for row in rd:
+            fsi = row["fsi_id"]
+            if fsi in members:
+                if fsi in seen:
+                    raise ValueError("FSI duplicato nel crosswalk identità")
+                if row["status"] not in ("VERIFIED", "REVIEW", "SOURCE_ASSERTED"):
+                    raise ValueError("Stato crosswalk sconosciuto")
+                seen.add(fsi)
+                scoped.append((fsi, row["fide_id"], row["status"]))
+    scoped.sort()
+    return hashlib.sha256(json.dumps(scoped, separators=(",", ":")).encode()).hexdigest()
+
+
+def already_promoted_same_scope(root, link, objects, identity, roster_scope_hash):
+    if not link.is_symlink():
+        return False
+    target = link.resolve(strict=True)
+    if not target.is_relative_to((root/"reports"/"versions").resolve()):
+        raise ValueError("Link managed inatteso")
+    meta = json.loads((target/"run-meta.json").read_text())
+    current_sources = {o["source_key"]:o["digest"] for o in objects}
+    if meta.get("sources") != current_sources:
+        return False
+    if meta.get("identity_scope_sha256"):
+        return meta["identity_scope_sha256"] == roster_scope_hash
+    old_sha = meta.get("identity_sha256")
+    if old_sha == sha256(identity):
+        return True
+    # Older output predates the semantic fingerprint; resolve its original
+    # private crosswalk rather than assuming the new national export is equal.
+    old_matches = [p for p in (root/"durable"/"identity").glob("verified-fsi-fide-*.csv")
+                   if sha256(p) == old_sha]
+    if len(old_matches) != 1:
+        return False
+    rosters = [o for o in objects if o["source_key"].startswith("fsi-members-")]
+    return scoped_identity_digest(old_matches[0], rosters) == roster_scope_hash
+
+
 def build_month(root,binary,month,identity):
     current=snapshot(root,f"fide-rating-combined-{month}")
     prev_month=previous_month(month)
@@ -150,14 +204,11 @@ def build_month(root,binary,month,identity):
     if not identity.is_file():return {"status":"pending","reason":"Registro FSI-FIDE VERIFIED esportato non presente"}
     objs=[current,region,club,allin]+list({v[0]["digest"]:v[0] for v in previous.values()}.values())
     for obj in objs:verify_digest(obj)
-    fingerprint=hashlib.sha256(("|".join(o["digest"] for o in objs)+"|"+sha256(identity)).encode()).hexdigest()
+    scoped_hash=scoped_identity_digest(identity,[region,club])
+    fingerprint=hashlib.sha256(("|".join(o["digest"] for o in objs)+"|"+scoped_hash).encode()).hexdigest()
     link=root/"reports"/f"rankings-{month}-managed"
-    if link.is_symlink():
-        target=link.resolve(strict=True)
-        if not target.is_relative_to((root/"reports"/"versions").resolve()):
-            raise ValueError("Link managed inatteso")
-        prior=json.loads((target/"run-meta.json").read_text())
-        if prior.get("fingerprint")==fingerprint:return {"status":"unchanged","month":month,"fingerprint":fingerprint}
+    if already_promoted_same_scope(root,link,objs,identity,scoped_hash):
+        return {"status":"unchanged","month":month,"reason":"Fonte/identita FSI rilevanti invariate","scope_identity_sha256":scoped_hash}
     version=(root/"reports"/"versions"/month/(fingerprint[:16]+"-"+now().strftime("%Y%m%dT%H%M%S"))).resolve()
     if version.exists():raise ValueError("Versione report già presente: rifiuto overwrite")
     version.mkdir(parents=True,mode=0o700)
@@ -165,9 +216,12 @@ def build_month(root,binary,month,identity):
         ("top3-tos-standard.json","top3",region,["--region","TOS","--rating","standard"]),
         ("club-17029-standard.json","club",club,["--club","17029","--rating","standard"]),
         ("club-17029-rapid-u18.json","club",club,["--club","17029","--rating","rapid","--under","18"]),
+        ("support/top3-tos-standard-full.json","top3",region,
+         ["--region","TOS","--rating","standard","--limit","100000"]),
     ]
     for filename,mode,roster,other in outputs:
         output=version/filename
+        output.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
         rating=other[other.index("--rating")+1]
         prior,prior_kind=previous[rating]
         capture([binary,"rankings",mode,"--snapshot",allin["path"],"--month",month,
@@ -180,9 +234,30 @@ def build_month(root,binary,month,identity):
             raise ValueError(f"Report non valido: {filename}")
         if doc.get("fsi_source",{}).get("blake3")!=roster["digest"] or doc.get("fide_source",{}).get("blake3")!=current["digest"]:
             raise ValueError(f"Provenienza report incoerente: {filename}")
+        if filename.startswith("support/"):
+            for group in doc.get("groups",[]):
+                if len(group.get("players",[]))!=group.get("population"):
+                    raise ValueError(f"Snapshot classifica completa troncato: {filename}")
+    full_now=version/"support/top3-tos-standard-full.json"
+    full_old=root/"reports"/f"rankings-{prev_month}-managed"/"support/top3-tos-standard-full.json"
+    if not full_old.is_file():
+        full_old=root/"reports"/"full-snapshots"/prev_month/"top3-tos-standard-full.json"
+    movement={"status":"pending","reason":"Snapshot regionale integrale mese precedente non disponibile"}
+    if full_old.is_file():
+        try:
+            result=capture([binary,"stats","movement","--current",full_now,"--previous",full_old,
+                            "--cohort","U16","--sex","absolute","--format","json"])
+            report=json.loads(result)
+            if report.get("meta",{}).get("certified") is not False:
+                raise ValueError("Movimenti non certificati: flag errato")
+            atomic_json(version/"support/movement-u16-absolute.json",report)
+            movement={"status":"computed","rows":len(report.get("rows",[]))}
+        except (RuntimeError, ValueError) as e:
+            movement={"status":"pending","reason":str(e)}
     atomic_json(version/"run-meta.json",{"schema":"antiskill.stats-managed.v1","fingerprint":fingerprint,"period":month,
-        "created_at":now().isoformat(),"identity_sha256":sha256(identity),"sources":{o["source_key"]:o["digest"] for o in objs},
-        "reports":[entry[0] for entry in outputs],"published":False,"certified":False})
+        "created_at":now().isoformat(),"identity_sha256":sha256(identity),
+        "identity_scope_sha256":scoped_hash,"sources":{o["source_key"]:o["digest"] for o in objs},
+        "reports":[entry[0] for entry in outputs],"movement":movement,"published":False,"certified":False})
     # Only after ALL reports validate do we promote the new complete version.
     tmp_link=root/"reports"/f".rankings-{month}-managed-{os.getpid()}"
     os.symlink(version,tmp_link)

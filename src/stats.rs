@@ -36,6 +36,7 @@ fn help() {
  antiskill stats coverage --region TOS --month 2026-11 --by club-province
  antiskill stats reports
  antiskill stats freshness
+ antiskill stats movement --current FULL-NOV.json --previous FULL-OCT.json --cohort U16
 
  --root DIR oppure ANTISKILL_STATS_ROOT (default XDG_DATA_HOME/antiskill)
  --report FILE     report esplicito per top3, club, coverage
@@ -561,6 +562,10 @@ fn from_report(o: &Opt, root: &Path) -> Result<(), String> {
     )
 }
 pub fn run(args: impl IntoIterator<Item = String>) -> ExitCode {
+    let args = args.into_iter().collect::<Vec<_>>();
+    if args.first().map(String::as_str) == Some("movement") {
+        return crate::stats_movement::run(args.into_iter().skip(1));
+    }
     let result = (|| {
         let Some(o) = parse(args)? else {
             help();

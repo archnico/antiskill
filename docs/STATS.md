@@ -6,6 +6,7 @@
 
     antiskill stats --help
     antiskill stats reports
+    antiskill stats movement --current /archivio/full-2026-12.json --previous /archivio/full-2026-11.json --cohort U16 --sex female --format json
     antiskill stats members --region TOS --year 2026 --by club
     antiskill stats members --region TOS --year 2026 --by club,club-province --limit 30
     antiskill stats members --region TOS --year 2026 --by club,type --under 18
@@ -32,6 +33,7 @@ I dati si cercano in una directory indicata con --root oppure ANTISKILL_STATS_RO
 - **club**: consulta il report Rankings per circolo e gli eventuali filtri originali, inclusa la fascia under. Le dimensioni non contemplate dal report non possono essere inferite.
 - **coverage**: mostra aggregati delle fonti FSI (tipologie tessera, province del circolo e province di residenza) salvati con il report regionale.
 - **reports**: inventario dei report disponibili.
+- **movement**: confronto tra due report regionali mensili *integrali* e consecutivi; calcola variazione di posizione, ingressi e uscite reali dai primi N. Con report Top 3 troncati o mesi/sorgenti non confrontabili fallisce senza generare affermazioni. ID assenti da uno dei due gruppi sono `unknown`, non nuovi ingressi certificati.
 
 ## Garanzie e limiti
 

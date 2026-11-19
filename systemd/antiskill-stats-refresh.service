@@ -6,7 +6,7 @@ ConditionPathExists=/home/nico/src/antiskill-stats-cli-20261119/scripts/stats_ma
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/python3 /home/nico/src/antiskill-stats-cli-20261119/scripts/stats_maintenance.py daily --root /srv/archive/chess/antiskill --bin /home/nico/src/antiskill-stats-cli-20261119/target/debug/antiskill
+ExecStart=/usr/bin/python3 /home/nico/src/antiskill-stats-cli-20261119/scripts/stats_maintenance.py daily --root /srv/archive/chess/antiskill --bin /home/nico/src/antiskill-stats-cli-20261119/target/release/antiskill
 WorkingDirectory=/home/nico/src/antiskill-stats-cli-20261119
 UMask=0077
 Nice=10
