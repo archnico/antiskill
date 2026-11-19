@@ -51,6 +51,51 @@ python3 review_queue.py --db "$DATA/identity.sqlite3" \
 
 The queue distinguishes inconsistent birth years, spelling changes, reordering of name tokens, and FIDE IDs missing from the checked snapshot. Its hints do **not** confirm or merge identities. The CSV includes names and years of birth; do not commit or redistribute it.
 
+## Read-only discrepancy ledger (official evidence vs source assertions)
+
+To audit the existing local pilot *without changing identities, PGN or source
+snapshots*, run the offline reconciliation checker:
+
+```sh
+python3 source_discrepancies.py --db "$DATA/identity.sqlite3" \
+  --summary-json "$DATA/reports/source-discrepancies-01.json" \
+  --details-jsonl "$DATA/reports/source-discrepancies-01.jsonl"
+```
+
+Both outputs must be **new private files outside the public checkout**. The
+source database opens read-only in one SQLite read transaction, so concurrent
+ingestion does not silently mix two database states in one report. Results are
+deterministic on an unchanged snapshot; outputs contain ID pairs, source keys,
+SHA-256 provenance and reason codes, **not names or birth dates**. Keep even
+ID-pair audit details private: the report is not a public player roster.
+
+The decisive distinction is between:
+
+- `COMPATIBLE_BUT_UNCERTIFIED`: an Allin pair agrees with a FIDE record or
+  with some other observed facts; **this is not independent certification**.
+  In particular, the legacy `identity_link.status=VERIFIED` is insufficient.
+- `REVIEW_REQUIRED` / `CONFLICT`: missing IDs, different source assertions,
+  mismatched names/years, conflicting pair observations, or impossible joins.
+  Absence from a monthly list is not proof that a person/ID does not exist.
+- `INDEPENDENTLY_CERTIFIED`: a separately certified three-source pair with
+  matching source fingerprints and an explicit tournament ID pair.
+- `INDEPENDENTLY_CERTIFIED_OUTSIDE_ALLIN`: the same independent proof,
+  with the added *Allin source gap*. This is **not** a failed certificate.
+- `CERTIFICATE_INVALID_REVIEW`: source hashes, explicit tournament pair,
+  link status or certification rule do not validate; fail closed.
+
+The JSON summary also reports how many FSI-only records were observed, how
+many name/year matches exist in that *partial* coverage, and how many
+`CANDIDATE_ONLY` pairs remain. These figures **must never be called complete
+national totals**. The current FIDE snapshot filename and the current
+acquisition date do not alone establish the effective publication period.
+
+This audit intentionally **does not promote pairs**, write to
+`identity_link`, duplicate the native PGN identity semantics or reimplement
+the existing `review_queue.py`. The latter is a separate personal-data review
+worksheet; this new report is a minimized evidence/discrepancy ledger.
+Synthetic checks: `python3 -m unittest -v test_source_discrepancies`.
+
 ## Unlinked FSI ↔ FIDE candidates (no automatic merge)
 
 The official ALLIN crosswalk leaves many people without an explicit FIDE ID.
