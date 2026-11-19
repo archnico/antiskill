@@ -80,6 +80,19 @@ def profile(db,namespace,external_id):
               ORDER BY e.event_year DESC,p.placement,e.event_name""",(fsi,))])
     for fide in fide_ids:
         aliases.extend(get(db,"alias","namespace=? AND player_id=?",("fide",fide)))
+    # Account observations never establish a person's identity.
+    # In FSI dossiers, only an independently VERIFIED FSI↔FIDE crosswalk
+    # may make a quarantined online candidate visible.
+    account_fides=(fide_ids if namespace=="fide" else
+        [r["fide_id"] for r in links if r["status"]=="VERIFIED"])
+    online_accounts=[]
+    if has_table(db,"online_account_candidate"):
+        for fid in sorted(set(account_fides)):
+            online_accounts.extend([dict(row) for row in db.execute("""
+              SELECT fide_id,platform,account_id,original_status,link_status,
+                     evidence_for,evidence_against,evidence_neutral,source_key
+              FROM online_account_candidate WHERE fide_id=?
+              ORDER BY platform,account_id""",(fid,))])
     official=[]
     for fid in fide_ids:
         official.extend(get(db,"fide_player","fide_id=?",(fid,)))
@@ -97,6 +110,7 @@ def profile(db,namespace,external_id):
         "association_office_candidates":offices,
         "honour_roll_candidates":full_honours,
         "legacy_sample_award_candidates":legacy_medals,
+        "online_account_candidates":online_accounts,
         "warning":"Only FSI/FIDE crosswalk identities can be VERIFIED. Office and medal candidates are NEVER proof of person identity. Do not treat team wins as individual wins."
     }
 
