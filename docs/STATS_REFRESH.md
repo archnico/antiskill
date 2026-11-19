@@ -27,6 +27,15 @@ python3 scripts/stats_maintenance.py status
 python3 scripts/stats_maintenance.py build --month 2026-11
 ```
 
+Per installare lo stesso servizio sul coordinatore n2 (percorso codice e archivio devono esistere):
+
+```bash
+install -Dm644 systemd/antiskill-stats-refresh.service ~/.config/systemd/user/antiskill-stats-refresh.service
+install -Dm644 systemd/antiskill-stats-refresh.timer ~/.config/systemd/user/antiskill-stats-refresh.timer
+systemctl --user daemon-reload
+systemctl --user enable --now antiskill-stats-refresh.timer
+```
+
 ## Import locale FIDE per i prossimi mesi
 
 Creare la directory privata `~/.local/state/antiskill-stats/fide-inbox`, poi collocare il file ZIP e un file JSON separato, per esempio `2026-12-combined.json`:

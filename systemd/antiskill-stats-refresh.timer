@@ -1,0 +1,12 @@
+[Unit]
+Description=Antiskill Stats - daily refresh and conditional rating report rebuild
+
+[Timer]
+OnCalendar=*-*-* 06:20:00
+RandomizedDelaySec=3min
+Persistent=true
+AccuracySec=1min
+Unit=antiskill-stats-refresh.service
+
+[Install]
+WantedBy=timers.target

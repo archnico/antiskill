@@ -1,0 +1,17 @@
+[Unit]
+Description=Antiskill Stats - private FSI refresh, approved FIDE imports and ratings recalculation
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/home/nico/src/antiskill-stats-cli-20261119/scripts/stats_maintenance.py
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /home/nico/src/antiskill-stats-cli-20261119/scripts/stats_maintenance.py daily --root /srv/archive/chess/antiskill --bin /home/nico/src/antiskill-stats-cli-20261119/target/debug/antiskill
+WorkingDirectory=/home/nico/src/antiskill-stats-cli-20261119
+UMask=0077
+Nice=10
+CPUWeight=60
+IOWeight=50
+TimeoutStartSec=30min
+NoNewPrivileges=true
+PrivateTmp=true
