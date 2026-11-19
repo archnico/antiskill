@@ -1,6 +1,8 @@
 mod context_registry;
 mod event_candidates;
+mod fide_local;
 mod fsi_calendar;
+mod fsi_members;
 mod snapshot;
 mod torneionline_allin;
 mod torneionline_tpol;
@@ -266,6 +268,8 @@ USO:
     antiskill sources query vesus-linked-events --help
     antiskill sources query context-registry --help
     antiskill sources diff fsi-calendar --help
+    antiskill sources import fide-local --help
+    antiskill sources sync fsi-members --root DIR --year 2026 (--club 17029 | --region TOS)
     antiskill sources sync torneionline-allin --root DIR
     antiskill sources sync torneionline-tpol --root DIR --event-code CODE
     antiskill sources sync vesus-linked-events --root DIR --tournament-key KEY
@@ -710,11 +714,37 @@ where
             }
         },
 
+        Some("import") => match args.next().as_deref() {
+            Some("fide-local") => match fide_local::run(args) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(error) => {
+                    eprintln!("ERRORE sources import fide-local: {error}");
+                    ExitCode::from(1)
+                }
+            },
+            Some(other) => {
+                eprintln!("Fonte import sconosciuta: {other}");
+                ExitCode::from(2)
+            }
+            None => {
+                eprintln!("Usa: antiskill sources import fide-local --help");
+                ExitCode::from(2)
+            }
+        },
+
         Some("sync") => match args.next().as_deref() {
             Some("fsi-calendar") => match fsi_calendar::run(args) {
                 Ok(()) => ExitCode::SUCCESS,
                 Err(error) => {
                     eprintln!("ERRORE sources sync fsi-calendar: {error}");
+                    ExitCode::from(1)
+                }
+            },
+
+            Some("fsi-members") => match fsi_members::run(args) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(error) => {
+                    eprintln!("ERRORE sources sync fsi-members: {error}");
                     ExitCode::from(1)
                 }
             },

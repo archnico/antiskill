@@ -12,6 +12,8 @@ name = "antiskill"
 path = "src/main.rs"
 
 [dependencies]
+quick-xml = "0.42.0"
+csv = "1.4.0"
 blake3 = "1.8.5"
 libc = "0.2.189"
 pgn-reader = "=0.29.0"
