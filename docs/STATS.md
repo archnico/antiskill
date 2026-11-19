@@ -11,8 +11,11 @@
     antiskill stats members --region TOS --year 2026 --by club,type --under 18
     antiskill stats members --region TOS --year 2026 --club 17029 --by type
     antiskill stats members --club 17029 --year 2026 --by category
+    antiskill stats top3 --region TOS --rating standard  # ultimo report disponibile
     antiskill stats top3 --region TOS --month 2026-11 --rating standard
+    antiskill stats top3 --region TOS --rating standard  # ultimo report disponibile
     antiskill stats top3 --region TOS --month 2026-11 --rating standard --cohort U16 --sex female
+    antiskill stats club --club 17029 --rating standard  # ultimo report disponibile
     antiskill stats club --club 17029 --month 2026-11 --rating standard
     antiskill stats club --club 17029 --month 2026-11 --rating rapid --under 18
     antiskill stats coverage --region TOS --month 2026-11 --by club-province
@@ -33,7 +36,7 @@ I dati si cercano in una directory indicata con --root oppure ANTISKILL_STATS_RO
 ## Garanzie e limiti
 
 1. Lettura locale, niente download impliciti. I manifest FSI sono controllati per source key, HTTP status, dimensione e BLAKE3; una sostituzione della fonte porta a errore.
-2. Su report con stesso scope/periodo/rating si richiede --report FILE anziché scegliere arbitrariamente.
+2. Senza --month si usa il periodo disponibile più recente. Se più report hanno medesimo scope/periodo/rating viene preferito esclusivamente l'unico report `rankings-YYYY-MM-managed` promosso dall'orchestratore dopo validazione atomica. Se il report gestito non esiste oppure vi sono più candidati senza autorità univoca, si richiede --report FILE; nessun report viene scelto arbitrariamente.
 3. Le statistiche riportano periodo, fonte, impronte, autorità e stato di certificazione. Un report senza rating FIDE non viene presentato come classifica FIDE.
 4. La regione indicata per i tesserati è quella **di affiliazione del circolo**, non la residenza. Per la residenza esiste il raggruppamento residence-province.
 5. L'età viene valutata rispetto all'anno richiesto, in convenzione anno solare. Il sesso non è presente nell'export FSI: per statistiche femminili si possono usare solo report che contengano dati compatibili e dichiarino la relativa copertura.

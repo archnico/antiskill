@@ -15,3 +15,7 @@ target/
 # Risultati e stato locale delle versioni archiviate
 /archive/**/results/
 /archive/**/.last-env
+
+# Python tooling
+__pycache__/
+*.pyc

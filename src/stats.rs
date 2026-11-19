@@ -30,18 +30,19 @@ fn help() {
  antiskill stats members --region TOS --year 2026 --by club
  antiskill stats members --region TOS --year 2026 --by club,type --under 18
  antiskill stats members --club 17029 --year 2026 --by type
- antiskill stats top3 --region TOS --month 2026-11 --rating standard
+ antiskill stats top3 --region TOS --rating standard   # ultimo report
  antiskill stats top3 --region TOS --month 2026-11 --cohort U16 --sex female
- antiskill stats club --club 17029 --month 2026-11 --rating standard
+ antiskill stats club --club 17029 --rating standard   # ultimo report
  antiskill stats coverage --region TOS --month 2026-11 --by club-province
  antiskill stats reports
+ antiskill stats freshness
 
  --root DIR oppure ANTISKILL_STATS_ROOT (default XDG_DATA_HOME/antiskill)
  --report FILE     report esplicito per top3, club, coverage
  --region CODE     regione di affiliazione (non residenza)
  --club CODE       codice federale del circolo
  --year YYYY       anno di tesseramento (members)
- --month YYYY-MM   periodo report (top3/club/coverage)
+ --month YYYY-MM   periodo report (default: mese più recente con report univoco)
  --rating standard|rapid|blitz|italia (default standard)
  --by club,club-name,club-province,residence-province,region,type,category,birth-year,country
  --under N         filtro per età (members o report club)
@@ -62,7 +63,16 @@ fn parse(args: impl IntoIterator<Item = String>) -> Result<Option<Opt>, String> 
     if ["help", "-h", "--help"].contains(&cmd.as_str()) {
         return Ok(None);
     }
-    if !["members", "top3", "club", "coverage", "reports"].contains(&cmd.as_str()) {
+    if ![
+        "members",
+        "top3",
+        "club",
+        "coverage",
+        "reports",
+        "freshness",
+    ]
+    .contains(&cmd.as_str())
+    {
         return Err(format!("Sottocomando non valido: {cmd}"));
     }
     let mut o = Opt {
@@ -148,7 +158,7 @@ fn parse(args: impl IntoIterator<Item = String>) -> Result<Option<Opt>, String> 
                 || o.cohort.is_some()
                 || o.sex.is_some()
         }
-        "reports" => {
+        "freshness" | "reports" => {
             o.region.is_some()
                 || o.club.is_some()
                 || o.year.is_some()
@@ -430,13 +440,34 @@ fn selected(o: &Opt, root: &Path) -> Result<(PathBuf, Value), String> {
         }
         return Ok((p.clone(), j));
     }
-    if o.month.is_none() {
-        return Err("Specificare --month oppure --report".into());
-    }
-    let found = reports(root)?
+    let mut found = reports(root)?
         .into_iter()
         .filter(|(_, j)| matches_report(o, j))
         .collect::<Vec<_>>();
+    // With no explicit month, discover the newest *available* period. Never
+    // silently choose between competing reports of the same latest period.
+    if o.month.is_none() {
+        if let Some(latest) = found.iter().map(|(_, j)| s(j, "period")).max() {
+            let latest = latest.to_owned();
+            found.retain(|(_, j)| s(j, "period") == latest);
+        }
+    }
+    if found.len() > 1 {
+        let managed = found
+            .iter()
+            .enumerate()
+            .filter(|(_, (p, j))| {
+                p.parent()
+                    .and_then(|x| x.file_name())
+                    .and_then(|x| x.to_str())
+                    == Some(format!("rankings-{}-managed", s(j, "period")).as_str())
+            })
+            .map(|(i, _)| i)
+            .collect::<Vec<_>>();
+        if managed.len() == 1 {
+            return Ok(found.swap_remove(managed[0]));
+        }
+    }
     match found.len(){
         0=>Err("Report assente: generare con antiskill rankings, oppure usare --report. Nessun dato inventato".into()),
         1=>Ok(found.into_iter().next().unwrap()),
@@ -445,7 +476,7 @@ fn selected(o: &Opt, root: &Path) -> Result<(PathBuf, Value), String> {
 }
 fn from_report(o: &Opt, root: &Path) -> Result<(), String> {
     let (path, j) = selected(o, root)?;
-    let meta = json!({"schema":"antiskill.stats.report.v1","path":path,"period":j["period"],"scope":j["scope"],"rating":j["rating"],"filters":j["filters"],"certified":j["certified"],"fsi_as_of":j["fsi_as_of"],"fide_month":j["fide_month"],"source":j["source"],"fsi_source":j["fsi_source"],"fide_source":j["fide_source"],"membership_authority":j["membership_authority"],"rating_authority":j["rating_authority"]});
+    let meta = json!({"schema":"antiskill.stats.report.v1","path":path,"period":j["period"],"scope":j["scope"],"rating":j["rating"],"filters":j["filters"],"certified":j["certified"],"fsi_as_of":j["fsi_as_of"],"fide_month":j["fide_month"],"previous_fide_period":j["previous_fide_period"],"previous_fide_matches":j["previous_fide_matches"],"source":j["source"],"fsi_source":j["fsi_source"],"fide_source":j["fide_source"],"membership_authority":j["membership_authority"],"rating_authority":j["rating_authority"]});
     if o.cmd == "coverage" {
         let by =
             o.by.as_ref()
@@ -538,6 +569,26 @@ pub fn run(args: impl IntoIterator<Item = String>) -> ExitCode {
         let r = root(&o)?;
         match o.cmd.as_str() {
             "members" => members(&o, &r),
+            "freshness" => {
+                let p = r.join("reports/stats-refresh-status.json");
+                let run = if p.exists() {
+                    read_json(&p)?
+                } else {
+                    json!({"status":"never-run"})
+                };
+                let all = reports(&r)?;
+                let latest = all
+                    .iter()
+                    .map(|(_, v)| s(v, "period"))
+                    .max()
+                    .unwrap_or("none");
+                let info = json!({"schema":"antiskill.stats.freshness.v1","latest_report_month":latest,"maintenance":run,"note":"FIDE requires an authorized local archive; no silent download or certification"});
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&info).map_err(|e| e.to_string())?
+                );
+                Ok(())
+            }
             "reports" => {
                 let mut rows = reports(&r)?
                     .into_iter()
