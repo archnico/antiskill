@@ -63,7 +63,7 @@ Il valore `url` deve essere esattamente il link FIDE reale del file, non quello 
 
 ## Confronto delle posizioni
 
-Il report regionale integrale di novembre 2026 è conservato separatamente in `reports/full-snapshots/2026-11/top3-tos-standard-full.json`. I prossimi report gestiti includono il loro snapshot integrale dentro `support/`. Quando il file integrale precedente esiste, la pipeline prova a calcolare anche la vista di movimento U16 assoluta in `support/movement-u16-absolute.json`; se non è provabile resta `pending` e il report Elo corrente continua a funzionare. Solo quando esiste uno snapshot equivalente del mese precedente (roster FSI rilevato nello stesso mese e report FIDE ufficiale completo) si può eseguire:
+Il report regionale integrale di novembre 2026 è conservato separatamente in `reports/full-snapshots/2026-11/top3-tos-standard-full.json`. I prossimi report gestiti includono il loro snapshot integrale dentro `support/`. Quando il file integrale precedente esiste, la pipeline prova a calcolare **tutte le 12 viste di movimento** (U08–U18, assoluta e femminile) in `support/movement-uNN-absolute.json` e `support/movement-uNN-female.json`. Gli errori restano nel campo `movement.failures`, senza inventare movimenti o bloccare i report Elo corretti; se manca la fonte precedente resta `pending`. Solo quando esiste uno snapshot equivalente del mese precedente (roster FSI rilevato nello stesso mese e report FIDE ufficiale completo) si può eseguire:
 
 ```bash
 antiskill stats movement --current /percorso/full-2026-12.json --previous /percorso/full-2026-11.json --cohort U16 --sex female --format json

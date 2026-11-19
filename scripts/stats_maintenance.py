@@ -244,16 +244,24 @@ def build_month(root,binary,month,identity):
         full_old=root/"reports"/"full-snapshots"/prev_month/"top3-tos-standard-full.json"
     movement={"status":"pending","reason":"Snapshot regionale integrale mese precedente non disponibile"}
     if full_old.is_file():
-        try:
-            result=capture([binary,"stats","movement","--current",full_now,"--previous",full_old,
-                            "--cohort","U16","--sex","absolute","--format","json"])
-            report=json.loads(result)
-            if report.get("meta",{}).get("certified") is not False:
-                raise ValueError("Movimenti non certificati: flag errato")
-            atomic_json(version/"support/movement-u16-absolute.json",report)
-            movement={"status":"computed","rows":len(report.get("rows",[]))}
-        except (RuntimeError, ValueError) as e:
-            movement={"status":"pending","reason":str(e)}
+        done=[]
+        failed=[]
+        for cohort in ("U08","U10","U12","U14","U16","U18"):
+            for sex in ("absolute","female"):
+                try:
+                    result=capture([binary,"stats","movement","--current",full_now,
+                                    "--previous",full_old,"--cohort",cohort,
+                                    "--sex",sex,"--format","json"])
+                    report=json.loads(result)
+                    if report.get("meta",{}).get("certified") is not False or report["meta"]["cohort"]!=cohort:
+                        raise ValueError("Movimenti non certificati o fascia incoerente")
+                    output_name=f"movement-{cohort.lower()}-{sex}.json"
+                    atomic_json(version/"support"/output_name,report)
+                    done.append(output_name)
+                except (RuntimeError, ValueError, KeyError) as e:
+                    failed.append({"group":cohort+"-"+sex,"reason":str(e)})
+        movement={"status":"computed" if not failed else "partial",
+                  "group_count":len(done),"files":done,"failures":failed}
     atomic_json(version/"run-meta.json",{"schema":"antiskill.stats-managed.v1","fingerprint":fingerprint,"period":month,
         "created_at":now().isoformat(),"identity_sha256":sha256(identity),
         "identity_scope_sha256":scoped_hash,"sources":{o["source_key"]:o["digest"] for o in objs},
@@ -268,12 +276,20 @@ def report_status(root):
     month=latest_fide(root)
     wanted=now().strftime("%Y-%m")
     sources={}
+    prior=previous_month(wanted)
     for key in [f"fsi-members-region-tos-{now().year}",f"fsi-members-club-17029-{now().year}",
-                f"fide-rating-combined-{wanted}",f"fide-rating-combined-{previous_month(wanted)}"]:
+                f"fide-rating-combined-{wanted}",f"fide-rating-combined-{prior}",
+                f"fide-rating-standard-{prior}",f"fide-rating-rapid-{prior}"]:
         obj=snapshot(root,key)
         sources[key]={"as_of":fsi_date(obj),"blake3":obj["digest"],"source_url":obj["url"]} if obj else None
+    available_kinds=[r for r in ("standard","rapid")
+                     if sources[f"fide-rating-combined-{wanted}"] is not None
+                     and (sources[f"fide-rating-combined-{prior}"] is not None
+                          or sources[f"fide-rating-{r}-{prior}"] is not None)]
     return {"current_month":wanted,"latest_fide_combined_month":month,"sources":sources,
-            "rating_current_month_available":month==wanted,"certificate":"not-certified"}
+            "rating_current_month_available":month==wanted,
+            "previous_fide_month":prior,"rating_delta_inputs_available":available_kinds,
+            "certificate":"not-certified"}
 
 def main(argv=None):
     ap=argparse.ArgumentParser(description="Antiskill private stats maintenance: sync FSI, import approved local FIDE ZIP, rebuild immutable reports")
