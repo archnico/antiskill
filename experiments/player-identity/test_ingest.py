@@ -7,6 +7,7 @@ import zipfile
 from pathlib import Path
 
 from ingest import build
+from review_queue import build_queue, csv_safe
 
 FIELDS = ['Nominativo','ID FSI','FIN','Federazione','Anno Nascita',
           'Categoria','Anno Ultimo Tesseramento','Circolo Attuale',
@@ -53,6 +54,11 @@ class IdentityImportTests(unittest.TestCase):
             self.assertNotIn('Provincia Residenza',text)
             self.assertNotIn('1975-04-02',str(list(con.execute('select * from fsi_player'))))
             self.assertEqual(con.execute('pragma integrity_check').fetchone()[0],'ok')
+            review=build_queue(con,d/'review.csv',d/'review.json')
+            self.assertEqual(review['total_review_rows'],6)
+            self.assertEqual(review['by_status'],{'CONFLICT':3,'REVIEW':2,'SOURCE_ASSERTED':1})
+            self.assertEqual(csv_safe('=HYPERLINK()'),"'=HYPERLINK()")
+            self.assertEqual(len((d/'review.csv').read_text().splitlines()),7)
             con.close()
 
 if __name__=='__main__':

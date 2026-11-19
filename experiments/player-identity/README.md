@@ -39,6 +39,18 @@ python3 player_lookup.py --db "$DATA/identity.sqlite3" --name "ROSSI MARIO"
 
 To add the current FIDE list to an archive initially indexed against an **older** FIDE copy, use `update_current_fide.py DB CURRENT_ZIP REPORT`; it makes a separate SQLite backup and preserves existing office and award observations.
 
+### Manual review queue
+
+Export unresolved identity crosswalk assertions **only to the private local workspace**:
+
+```sh
+python3 review_queue.py --db "$DATA/identity.sqlite3" \
+  --out-csv "$DATA/manual_review.csv" \
+  --summary-json "$DATA/manual_review_summary.json"
+```
+
+The queue distinguishes inconsistent birth years, spelling changes, reordering of name tokens, and FIDE IDs missing from the checked snapshot. Its hints do **not** confirm or merge identities. The CSV includes names and years of birth; do not commit or redistribute it.
+
 ## Evidence semantics
 
 | Status | Meaning |
