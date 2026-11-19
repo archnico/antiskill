@@ -7,6 +7,7 @@ from pathlib import Path
 from ingest import build
 from enrich_all_albi import import_all, parse_honour_rolls
 from enrich_club_history import apply as import_history
+from player_lookup import profile, find_names
 
 HEADERS=['Nominativo','ID FSI','FIN','Federazione','Anno Nascita',
          'Categoria','Anno Ultimo Tesseramento','Circolo Attuale',
@@ -74,6 +75,21 @@ class HistoricalIdentityTests(unittest.TestCase):
             import_all(db_path,albi,report)
             with sqlite3.connect(db_path) as db:
                 self.assertEqual(db.execute('SELECT count(*) FROM honour_roll_placement').fetchone()[0],before)
+
+                dossier=profile(db,'fsi',100)
+                self.assertTrue(dossier['found'])
+                self.assertEqual(
+                    {(r['membership_year'],r['official_name']) for r in dossier['membership_history']},
+                    {(2025,'VECCHIO CIRCOLO'),(2026,'NUOVO CIRCOLO')})
+                self.assertTrue(any(r['classification']=='online_individual'
+                                    and r['placement']==1 for r in dossier['honour_roll_candidates']))
+                self.assertFalse(any(r['classification']=='team_or_school'
+                                     for r in dossier['honour_roll_candidates']))
+                self.assertEqual(len(dossier['association_office_candidates']),3)
+                self.assertEqual(len(find_names(db,'Lucio Vaporini')['matches']),2)
+                # Two exact same-name FSI IDs must remain separate; no award assigned.
+                ambiguous=profile(db,'fsi',101)
+                self.assertEqual(ambiguous['honour_roll_candidates'],[])
 
 if __name__=='__main__':
     unittest.main()
