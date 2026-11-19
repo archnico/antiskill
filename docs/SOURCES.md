@@ -118,9 +118,10 @@ L'autorità indicata è sempre **contestuale**: FIDE può essere primaria per un
 - Manuale: <https://www.torneionline.com/allin.pdf>
 - Cadenza: giornaliera.
 - Utilità: ponte operativo tra Elo Italia, anagrafica FSI e dati FIDE; include ID FSI e FIDE, rating, nascita, residenza, società e tessere quando disponibili.
-- Autorità: alta come tabella di collegamento, non unica fonte canonica.
-- Limiti: record parziali, collegamenti mancanti o ritardati e dati provenienti da tabelle differenti.
-- Strategia: snapshot quotidiano; preferire FIDE per rating FIDE e FSI per tesseramento e società correnti.
+- Autorità: **solo ausiliaria**. Ogni coppia FSI↔FIDE nel file è un’asserzione di Allin, non una verifica indipendente del legame né un motivo per attribuire automaticamente partite senza ID FIDE.
+- Limiti: record parziali, collegamenti mancanti o ritardati, omonimi, e dati provenienti da tabelle differenti. Il nome univoco nel file non dimostra l’identità nel PGN.
+- Freschezza: controllare **la data dei dati pubblicati** (per esempio Last-Modified, periodo dichiarato e hash), non solo fetched_at. Il 19/11/2026 la pagina riportava Allin aggiornato al 28/04/2026 contro la lista Elo Italia dell’11/11/2026; una nuova acquisizione dello stesso contenuto non lo rende corrente.
+- Strategia: conservare snapshot e crosswalk come candidati con prova e stato di verifica; preferire FIDE per Elo e identità FIDE, FSI per tesseramento e società correnti, liste Elo ufficiali per Elo Italia. Conflitti o assenza di corroborazione → review, non promozione.
 - Diritti: `internal`.
 
 ## Torneionline T'Pol
