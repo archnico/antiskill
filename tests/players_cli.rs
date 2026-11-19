@@ -214,7 +214,7 @@ fn setup_federated_without_homonym() -> TestDirectory {
 }
 
 #[test]
-fn federation_v2_promotes_unique_token_equivalent_alias_and_exports_it() {
+fn federation_v2_keeps_allin_name_only_alias_as_unverified_candidate() {
     let directory = setup_federated_without_homonym();
     let workspace = directory.0.join("workspace");
     let index = write_federation_index(&directory);
@@ -238,21 +238,19 @@ fn federation_v2_promotes_unique_token_equivalent_alias_and_exports_it() {
     let view: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(view["profile"], "antiskill_player_identity_view_v2");
     assert_eq!(view["direct_count"], 1);
-    assert_eq!(view["promoted_count"], 1);
-    assert_eq!(view["verified_occurrences"].as_array().unwrap().len(), 2);
-    assert_eq!(view["unresolved_candidates"].as_array().unwrap().len(), 0);
-    assert!(view["verified_occurrences"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(
-            |row| row["evidence_class"] == "verified_alias" && row["names"][0] == "Aurora, Esempio"
-        ));
+    assert_eq!(view["promoted_count"], 0);
+    assert_eq!(view["verified_occurrences"].as_array().unwrap().len(), 1);
+    assert_eq!(view["unresolved_candidates"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        view["unresolved_candidates"][0]["names"][0],
+        "Aurora, Esempio"
+    );
     assert!(view["external_ids"]
         .as_array()
         .unwrap()
         .iter()
-        .any(|id| id["namespace"] == "fsi" && id["value"] == "900001"));
+        .all(|id| id["namespace"] != "fsi"));
+    assert_eq!(view["bridge_evidence"][0]["fsi_id"], "900001");
 
     let export = directory.0.join("verified.pgn");
     let output = command(
@@ -273,6 +271,25 @@ fn federation_v2_promotes_unique_token_equivalent_alias_and_exports_it() {
         String::from_utf8_lossy(&output.stderr)
     );
     let text = fs::read_to_string(export).unwrap();
+    assert!(text.contains("Direct"));
+    assert!(!text.contains("MalformedAlias"));
+
+    let candidate_export = directory.0.join("with-candidates.pgn");
+    let output = command(
+        &workspace,
+        &[
+            "players",
+            "--fide-id",
+            "900000001",
+            "--federation-index",
+            index.to_str().unwrap(),
+            "--candidates",
+            "--export",
+            candidate_export.to_str().unwrap(),
+        ],
+    );
+    assert!(output.status.success());
+    let text = fs::read_to_string(candidate_export).unwrap();
     assert!(text.contains("Direct"));
     assert!(text.contains("MalformedAlias"));
 }

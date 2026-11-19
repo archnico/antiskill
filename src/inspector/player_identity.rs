@@ -408,8 +408,6 @@ pub(crate) fn query_with_federation_bridge(
         return Err("Bridge federativo incoerente con la query FIDE".into());
     }
     let mut bridge_signatures = BTreeSet::new();
-    let mut bridge_aliases = BTreeSet::new();
-    let mut bridge_signature_unique = BTreeSet::new();
     for observation in &bridge.observations {
         if observation.fide_id != fide_id || observation.fsi_id != bridge.fsi_id {
             return Err("Osservazioni bridge federativo contraddittorie".into());
@@ -419,11 +417,7 @@ pub(crate) fn query_with_federation_bridge(
         if calculated != observation.name_signature {
             return Err("Firma nome bridge federativo non verificabile".into());
         }
-        bridge_aliases.insert(observation.raw_name.clone());
-        bridge_signatures.insert(calculated.clone());
-        if observation.signature_unique {
-            bridge_signature_unique.insert(calculated);
-        }
+        bridge_signatures.insert(calculated);
     }
 
     let mut direct = Vec::new();
@@ -482,33 +476,18 @@ pub(crate) fn query_with_federation_bridge(
         return Err("Collection cambiata durante la riconciliazione federativa".into());
     }
 
-    let safe_signatures = bridge_signature_unique
-        .difference(&blocked_signatures)
-        .cloned()
-        .collect::<BTreeSet<_>>();
-    let mut promoted = Vec::new();
+    // An ALLIN FSI-FIDE pair and a unique name signature are only source
+    // assertions. They do not independently verify a name-only PGN side.
     let mut unresolved = Vec::new();
-    for (evidence, signature) in name_only {
-        if safe_signatures.contains(&signature) {
-            promoted.push(verified_from_evidence(
-                evidence,
-                "verified_alias",
-                Some(signature),
-            ));
-        } else {
-            unresolved.push(PlayerIdentityCandidateV1 {
-                occurrence_id: evidence.occurrence_id,
-                side: evidence.side,
-                names: exact_values(&evidence.names),
-                candidate_policy: CANDIDATE_POLICY,
-            });
-        }
+    for (evidence, _) in name_only {
+        unresolved.push(PlayerIdentityCandidateV1 {
+            occurrence_id: evidence.occurrence_id,
+            side: evidence.side,
+            names: exact_values(&evidence.names),
+            candidate_policy: CANDIDATE_POLICY,
+        });
     }
     direct.sort_by(|left, right| {
-        (&left.occurrence_id, side_rank(left.side))
-            .cmp(&(&right.occurrence_id, side_rank(right.side)))
-    });
-    promoted.sort_by(|left, right| {
         (&left.occurrence_id, side_rank(left.side))
             .cmp(&(&right.occurrence_id, side_rank(right.side)))
     });
@@ -522,9 +501,8 @@ pub(crate) fn query_with_federation_bridge(
     });
 
     let direct_count = direct.len();
-    let promoted_count = promoted.len();
+    let promoted_count = 0;
     let mut verified_occurrences = direct;
-    verified_occurrences.extend(promoted);
     verified_occurrences.sort_by(|left, right| {
         (&left.occurrence_id, side_rank(left.side))
             .cmp(&(&right.occurrence_id, side_rank(right.side)))
@@ -532,7 +510,6 @@ pub(crate) fn query_with_federation_bridge(
     let aliases = verified_occurrences
         .iter()
         .flat_map(|occurrence| occurrence.names.iter().cloned())
-        .chain(bridge_aliases)
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect();
@@ -542,18 +519,13 @@ pub(crate) fn query_with_federation_bridge(
         entity_profile: ENTITY_PROFILE,
         player_entity_id: entity_id(&fide_id),
         fide_id: fide_id.clone(),
-        external_ids: vec![
-            ExternalPlayerIdV2 {
-                namespace: "fide",
-                value: fide_id,
-                evidence_class: "direct_fide_id",
-            },
-            ExternalPlayerIdV2 {
-                namespace: "fsi",
-                value: bridge.fsi_id,
-                evidence_class: "fsi_fide_bridge",
-            },
-        ],
+        // The FSI identifier is retained in bridge_evidence, but is not an
+        // authoritative external identity until corroborated independently.
+        external_ids: vec![ExternalPlayerIdV2 {
+            namespace: "fide",
+            value: fide_id,
+            evidence_class: "direct_fide_id",
+        }],
         aliases,
         verified_occurrences,
         direct_count,
