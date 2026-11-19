@@ -215,3 +215,103 @@ fn accepts_versioned_and_legacy_provenance_formats() {
     assert_eq!(as_json(&result)["fide_id"], "28551931");
     fs::remove_dir_all(root).unwrap();
 }
+
+fn with_profiles(root: &Path, crosswalk: &Path, fsi: &str, fide: &str) -> PathBuf {
+    let crosswalk_sha = Command::new("sha256sum").arg(crosswalk).output().unwrap();
+    let crosswalk_sha = String::from_utf8(crosswalk_sha.stdout)
+        .unwrap()
+        .split_whitespace()
+        .next()
+        .unwrap()
+        .to_string();
+    let registry_sha = "9".repeat(64);
+    let fide_blake3 = "a".repeat(64);
+    let month = "2026-11";
+    let refdir = root.join("raw/refs");
+    fs::create_dir_all(&refdir).unwrap();
+    fs::write(
+        refdir.join("fide-rating-combined-2026-11.json"),
+        serde_json::to_vec(&json!({"blake3":fide_blake3})).unwrap(),
+    )
+    .unwrap();
+    let pdir = root.join("durable/identity/profile-indexes");
+    fs::create_dir_all(&pdir).unwrap();
+    let p = pdir.join("profiles.json");
+    let profile = json!({"fsi_id":fsi,"fide_id":fide,"full_name":"ROSSI MARIO",
+       "surname":"ROSSI","given_name":"MARIO","birth_date":null,"birth_year":1990,
+       "nationality_code":"ITA","fide_federation":"ITA",
+       "fsi_category":"1N","fsi_category_source":"fsi-official-roster",
+       "fide_title":"FM","fide_standard":1843,"fide_rapid":null,"fide_blitz":1710,
+       "fide_rating_status":"found"});
+    let db = json!({"schema":"antiskill.stats.player-profiles.v1","fingerprint":"fingerprint1",
+       "publication_allowed":false,"month":month,"registry_sha256":registry_sha,
+       "crosswalk_sha256":crosswalk_sha,"fide_blake3":fide_blake3,
+       "fsi_sources":[],"players":{fsi:profile}});
+    fs::write(&p, serde_json::to_vec(&db).unwrap()).unwrap();
+    let sha = Command::new("sha256sum").arg(&p).output().unwrap();
+    let sha = String::from_utf8(sha.stdout)
+        .unwrap()
+        .split_whitespace()
+        .next()
+        .unwrap()
+        .to_string();
+    let pointer = json!({"schema":"antiskill.stats.player-profiles-pointer.v1",
+       "profile_sha256":sha,"publication_allowed":false,
+       "profile_path":"durable/identity/profile-indexes/profiles.json",
+       "month":month,"fingerprint":"fingerprint1","registry_sha256":registry_sha,
+       "crosswalk_sha256":crosswalk_sha,"fide_blake3":fide_blake3});
+    fs::write(
+        root.join("durable/identity/profiles-current.json"),
+        serde_json::to_vec(&pointer).unwrap(),
+    )
+    .unwrap();
+    p
+}
+#[test]
+fn enriched_profile_both_directions_and_missing_ratings_are_null() {
+    let root = work();
+    let c = export(
+        &root,
+        "verified-fsi-fide-2026-11-19.csv",
+        &[("192691", "28551931", "VERIFIED")],
+        "2026-11-19T12:00:00+00:00",
+    );
+    with_profiles(&root, &c, "192691", "28551931");
+    let r = run(&root, &["--fsi", "192691", "--format", "json"]);
+    assert!(r.status.success(), "{}", String::from_utf8_lossy(&r.stderr));
+    let j = as_json(&r);
+    assert_eq!(j["profile"]["surname"], "ROSSI");
+    assert_eq!(j["profile"]["given_name"], "MARIO");
+    assert_eq!(j["profile"]["birth_year"], 1990);
+    assert_eq!(j["profile"]["birth_date"], Value::Null);
+    assert_eq!(j["profile"]["fide_rapid"], Value::Null);
+    assert_eq!(j["profile"]["fide_standard"], 1843);
+    assert_eq!(j["profile"]["fide_blitz"], 1710);
+    assert_eq!(j["profile"]["nationality_code"], "ITA");
+    assert_eq!(j["profile"]["fide_federation"], "ITA");
+    assert_eq!(j["profile"]["fide_rating_month"], "2026-11");
+    let rev = run(&root, &["--fide", "28551931", "--format", "json"]);
+    assert!(rev.status.success());
+    assert_eq!(as_json(&rev)["profile"]["fide_standard"], 1843);
+    let csv = run(&root, &["--fsi", "192691", "--format", "csv"]);
+    assert!(csv.status.success());
+    let csv = String::from_utf8(csv.stdout).unwrap();
+    assert!(csv.contains("ROSSI MARIO,ROSSI,MARIO,1990,,ITA,ITA,1N,FM,1843,,1710,2026-11"));
+    fs::remove_dir_all(root).unwrap();
+}
+#[test]
+fn profile_tamper_or_identity_disagreement_cannot_silently_enrich() {
+    let root = work();
+    let c = export(
+        &root,
+        "verified-fsi-fide-2026-11-19.csv",
+        &[("192691", "28551931", "VERIFIED")],
+        "2026-11-19T12:00:00+00:00",
+    );
+    let p = with_profiles(&root, &c, "192691", "28551931");
+    fs::write(&p, b"{}").unwrap();
+    let bad = run(&root, &["--fsi", "192691", "--format", "json"]);
+    assert_eq!(bad.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&bad.stderr).contains("SHA256"));
+    fs::remove_dir_all(root).unwrap();
+}

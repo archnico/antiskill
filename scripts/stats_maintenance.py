@@ -328,6 +328,13 @@ def main(argv=None):
                 identity=opts.identity or identity_export(root,opts.registry_dir)
                 state["identity_export"]=str(identity)
                 state["build"]=build_month(root,opts.bin,month,identity)
+                if snapshot(root,f"fide-rating-combined-{month}") is not None:
+                    profile_builder=Path(__file__).with_name("build_stats_player_profiles.py")
+                    profile_output=capture(["python3",profile_builder,"--root",root,
+                                             "--registry-dir",opts.registry_dir,"--month",month])
+                    state["profiles"]=json.loads(profile_output)
+                else:
+                    state["profiles"]={"status":"pending","reason":f"FIDE combined {month} assente"}
             state["result"]="ok"
         except Exception as exc:
             state["result"]="error";state["error"]=str(exc)

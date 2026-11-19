@@ -27,6 +27,9 @@ fn help() {
  antiskill stats identity --fsi 192691 --format json
  antiskill stats identity --fide 28551931 --format csv
  antiskill stats identity --fsi 192691 --crosswalk FILE.csv
+ La scheda include anagrafica, categoria FSI, titolo FIDE e tre rating FIDE
+ dalla cache locale mensile verificata (quando disponibile). Data di nascita
+ completa non disponibile nelle fonti: solo anno; rating zero => non classificato.
 
  --fsi ID / --fide ID   obbligatorio esattamente uno, numerico
  --format table|json|csv (default table)
@@ -298,6 +301,115 @@ fn load(path: PathBuf) -> Result<Crosswalk, String> {
     })
 }
 
+fn load_profile(opt: &Opt, cw: &Crosswalk, fsi: &str, fide: &str) -> Result<Option<Value>, String> {
+    let pointer_path = opt.root.join("durable/identity/profiles-current.json");
+    if !pointer_path.exists() {
+        return Ok(None);
+    }
+    let pointer = read_json(&pointer_path)?;
+    if field(&pointer, "schema") != "antiskill.stats.player-profiles-pointer.v1"
+        || pointer["publication_allowed"] != false
+    {
+        return Err("Indice anagrafico senza provenienza o stato privato".into());
+    }
+    if field(&pointer, "crosswalk_sha256") != field(&cw.proof, "crosswalk_sha256")
+        || field(&pointer, "registry_sha256") != field(&cw.proof, "source_db_sha256")
+    {
+        // Old index does not override newer verified identities.
+        return Ok(None);
+    }
+    let month = field(&pointer, "month");
+    if month.len() != 7 || month.as_bytes()[4] != b'-' {
+        return Err("Periodo dell'indice non valido".into());
+    }
+    // If a newer FIDE combined release has arrived, do not silently label
+    // the old ratings as current; wait for the new profile-index build.
+    let refs = opt.root.join("raw/refs");
+    if !refs.is_dir() {
+        return Ok(None);
+    }
+    {
+        for e in fs::read_dir(&refs).map_err(|e| e.to_string())? {
+            let p = e.map_err(|e| e.to_string())?.path();
+            let file = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
+            if let Some(other) = file
+                .strip_prefix("fide-rating-combined-")
+                .and_then(|x| x.strip_suffix(".json"))
+            {
+                if other > month {
+                    return Ok(None);
+                }
+            }
+        }
+        let fide_ref = refs.join(format!("fide-rating-combined-{month}.json"));
+        if !fide_ref.is_file()
+            || field(&read_json(&fide_ref)?, "blake3") != field(&pointer, "fide_blake3")
+        {
+            return Ok(None);
+        }
+    }
+    let name = field(&pointer, "profile_path");
+    if !name.starts_with("durable/identity/profile-indexes/")
+        || name.contains("..")
+        || name.starts_with('/')
+    {
+        return Err("Percorso indice anagrafico inatteso".into());
+    }
+    let path = opt.root.join(name);
+    let index_root = opt.root.join("durable/identity/profile-indexes");
+    let dir = index_root
+        .canonicalize()
+        .map_err(|e| format!("Cartella profili: {e}"))?;
+    let actual = path.canonicalize().map_err(|e| format!("Profilo: {e}"))?;
+    if !actual.starts_with(&dir)
+        || !actual.is_file()
+        || actual.metadata().map_err(|e| e.to_string())?.len() > 100_000_000
+    {
+        return Err("File profilo fuori archivio o dimensione inattesa".into());
+    }
+    let expected = field(&pointer, "profile_sha256");
+    if !is_sha(expected) || sha256(&path)? != expected {
+        return Err("SHA256 indice anagrafico divergente".into());
+    }
+    let file = read_json(&path)?;
+    if field(&file, "schema") != "antiskill.stats.player-profiles.v1"
+        || file["publication_allowed"] != false
+        || field(&file, "fingerprint") != field(&pointer, "fingerprint")
+        || field(&file, "crosswalk_sha256") != field(&cw.proof, "crosswalk_sha256")
+        || field(&file, "registry_sha256") != field(&pointer, "registry_sha256")
+        || field(&file, "fide_blake3") != field(&pointer, "fide_blake3")
+        || field(&file, "month") != month
+    {
+        return Err("Indice anagrafico incoerente con la fonte".into());
+    }
+    let player = &file["players"][fsi];
+    if player.is_null() {
+        return Ok(None);
+    }
+    if field(player, "fsi_id") != fsi || field(player, "fide_id") != fide {
+        return Err("Indice anagrafico: identità non corrispondente".into());
+    }
+    let mut profile = player.clone();
+    profile["fide_rating_month"] = json!(month);
+    profile["provenance"] = json!({
+        "profile_sha256":expected,"fide_source_blake3":pointer["fide_blake3"],
+        "fsi_sources":file["fsi_sources"],"registry_sha256":pointer["registry_sha256"],
+        "fide_month":month,"source":"private-local-verified-identity"
+    });
+    Ok(Some(profile))
+}
+fn display(v: &Value, key: &str) -> String {
+    if let Some(s) = v[key].as_str() {
+        if !s.is_empty() {
+            return s.to_string();
+        }
+    }
+    if let Some(n) = v[key].as_i64() {
+        return n.to_string();
+    }
+    "—".into()
+}
+
 fn render(opt: &Opt, cw: &Crosswalk) -> Result<i32, String> {
     let found = cw
         .rows
@@ -336,6 +448,11 @@ fn render(opt: &Opt, cw: &Crosswalk) -> Result<i32, String> {
             })
             .collect::<Vec<_>>()
     };
+    let profile = if official {
+        load_profile(opt, cw, fsi.unwrap(), fide.unwrap())?
+    } else {
+        None
+    };
     let provenance = json!({
         "exported_at":cw.proof["exported_at"],
         "source_table":cw.proof["source_table"],
@@ -349,7 +466,7 @@ fn render(opt: &Opt, cw: &Crosswalk) -> Result<i32, String> {
     let value = json!({
         "schema":SCHEMA,"queried_by":opt.kind,"queried_id":opt.id,"status":state,
         "fsi_id":fsi,"fide_id":fide,"candidates":candidates,
-        "certified":false,"provenance":provenance,
+        "profile":profile,"certified":false,"provenance":provenance,
         "note":"VERIFIED refers to the identity link in the private registry, not publication certification."
     });
     match opt.format.as_str() {
@@ -366,6 +483,19 @@ fn render(opt: &Opt, cw: &Crosswalk) -> Result<i32, String> {
                 "fide_id",
                 "status",
                 "crosswalk_sha256",
+                "full_name",
+                "surname",
+                "given_name",
+                "birth_year",
+                "birth_date",
+                "nationality_code",
+                "fide_federation",
+                "fsi_category",
+                "fide_title",
+                "fide_standard",
+                "fide_rapid",
+                "fide_blitz",
+                "fide_rating_month",
             ])
             .map_err(|e| e.to_string())?;
             w.write_record([
@@ -375,6 +505,56 @@ fn render(opt: &Opt, cw: &Crosswalk) -> Result<i32, String> {
                 fide.unwrap_or(""),
                 state,
                 field(&cw.proof, "crosswalk_sha256"),
+                profile
+                    .as_ref()
+                    .map(|p| field(p, "full_name"))
+                    .unwrap_or(""),
+                profile.as_ref().map(|p| field(p, "surname")).unwrap_or(""),
+                profile
+                    .as_ref()
+                    .map(|p| field(p, "given_name"))
+                    .unwrap_or(""),
+                &profile
+                    .as_ref()
+                    .and_then(|p| p["birth_year"].as_i64())
+                    .map(|n| n.to_string())
+                    .unwrap_or_default(),
+                "",
+                profile
+                    .as_ref()
+                    .map(|p| field(p, "nationality_code"))
+                    .unwrap_or(""),
+                profile
+                    .as_ref()
+                    .map(|p| field(p, "fide_federation"))
+                    .unwrap_or(""),
+                profile
+                    .as_ref()
+                    .map(|p| field(p, "fsi_category"))
+                    .unwrap_or(""),
+                profile
+                    .as_ref()
+                    .map(|p| field(p, "fide_title"))
+                    .unwrap_or(""),
+                &profile
+                    .as_ref()
+                    .and_then(|p| p["fide_standard"].as_i64())
+                    .map(|n| n.to_string())
+                    .unwrap_or_default(),
+                &profile
+                    .as_ref()
+                    .and_then(|p| p["fide_rapid"].as_i64())
+                    .map(|n| n.to_string())
+                    .unwrap_or_default(),
+                &profile
+                    .as_ref()
+                    .and_then(|p| p["fide_blitz"].as_i64())
+                    .map(|n| n.to_string())
+                    .unwrap_or_default(),
+                profile
+                    .as_ref()
+                    .map(|p| field(p, "fide_rating_month"))
+                    .unwrap_or(""),
             ])
             .map_err(|e| e.to_string())?;
             w.flush().map_err(|e| e.to_string())?;
@@ -402,6 +582,38 @@ fn render(opt: &Opt, cw: &Crosswalk) -> Result<i32, String> {
                 for r in &found {
                     println!("candidato FSI={} FIDE={} stato={}", r.fsi, r.fide, r.status);
                 }
+            }
+            if let Some(p) = profile.as_ref() {
+                println!("Nome completo: {}", display(p, "full_name"));
+                println!(
+                    "Cognome: {}  |  Nome: {}",
+                    display(p, "surname"),
+                    display(p, "given_name")
+                );
+                println!(
+                    "Nascita: anno {} (giorno e mese non disponibili)",
+                    display(p, "birth_year")
+                );
+                println!(
+                    "Nazionalità (codice FSI): {}",
+                    display(p, "nationality_code")
+                );
+                println!("Federazione FIDE: {}", display(p, "fide_federation"));
+                println!("Categoria FSI: {}", display(p, "fsi_category"));
+                println!("Titolo FIDE: {}", display(p, "fide_title"));
+                println!(
+                    "Elo FIDE {} — Standard: {}  Rapid: {}  Blitz: {}",
+                    display(p, "fide_rating_month"),
+                    display(p, "fide_standard"),
+                    display(p, "fide_rapid"),
+                    display(p, "fide_blitz")
+                );
+                if field(p, "fide_rating_status") != "found" {
+                    println!("Stato lista FIDE: {}", display(p, "fide_rating_status"));
+                }
+                println!("Fonte categoria FSI: {}", display(p, "fsi_category_source"));
+            } else if official {
+                println!("Scheda anagrafica/Elo: indice mensile non disponibile o da aggiornare");
             }
             println!(
                 "Fonte: registro privato identity_link · export {}",

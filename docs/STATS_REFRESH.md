@@ -70,3 +70,15 @@ antiskill stats movement --current /percorso/full-2026-12.json --previous /perco
 ```
 
 Un Top 3 con tre giocatori per fascia **non** basta: `movement` lo rifiuta. Assenze dalle liste complete vengono indicate come **unknown**, non come ingresso/uscita certa. Si confrontano solo mesi consecutivi, stesso rating e regione, identificatori coerenti e manifest FSI verificati.
+
+## Profilo anagrafico e triplo Elo
+
+Il manutentore crea un indice locale in `durable/identity/profile-indexes/`, con puntatore atomico `durable/identity/profiles-current.json`. La costruzione scansiona **integralmente** lo ZIP FIDE combined già autorizzato e memorizza i soli 28.764 FIDE ID collegati ai VERIFIED correnti, conservando Standard/Rapid/Blitz, nome, federazione e titolo FIDE. Per i giocatori nei roster FSI ufficiali Toscana/17029 aggiunge cognome, nome, categoria, anno nascita e codice di nazionalità FSI. Per gli altri conserva il profilo del registro nazionale come fonte operativa, esplicitamente segnalata.
+
+Non si inferisce data di nascita completa da un anno, né nazionalità da una federazione FIDE. Se la lista FIDE contiene rating zero, l'Elo è `null` (non classificato). Per incongruenze di anno nascita, non assegna rating. Ogni indice ha fingerprint degli input, SHA256 e provenienza, rimane privato e non pubblicabile. L'import FIDE di mesi futuri resta soggetto al consenso sull'archivio locale.
+
+```bash
+antiskill stats identity --fsi 192691
+antiskill stats identity --fide 28551931 --format json
+python3 scripts/build_stats_player_profiles.py --root /srv/archive/chess/antiskill
+```
