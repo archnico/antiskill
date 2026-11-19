@@ -108,6 +108,54 @@ remain two distinct occurrences.
 `antiskill player dossier` CLI. Connecting approved online accounts and
 official tournament records to games is a later evidence-gated task.
 
+## Official FSI roster checks and durable PGN attribution
+
+The official FSI [tesserati](https://www.federscacchi.com/fsi/index.php/struttura/tesserati)
+directory can corroborate an **FSI** name/birth-year independently of ALLIN.
+It does **not** itself attest any `fide_id`. Avoid turning a corroborated
+FSI identity into a FSI/FIDE identity merge.
+
+A bounded initial pilot fetches at most 12 individual FSI pages (adult
+2026 candidates only). The efficient path instead fetches at most five
+official *club roster* pages per invocation, each containing many FSI ID
+observations. They are kept under a private path with source hashes:
+
+```sh
+python3 fsi_roster_probe.py --db "$DATA/identity.sqlite3" \
+  --raw-dir "$DATA/raw/fsi-individual-checks" \
+  --report "$DATA/fsi-individual-probe.json" --max-checks 8
+
+python3 fsi_club_roster_probe.py --db "$DATA/identity.sqlite3" \
+  --raw-dir "$DATA/raw/fsi-club-rosters" \
+  --report "$DATA/fsi-clubs-probe.json" --max-clubs 4
+```
+
+Both tools have enforced bounded network requests and a minimum delay; parsing
+fails closed on count, club, year and ID disagreement. Even a
+`FSI_ROSTER_CORROBORATED` observation means **only the FSI record has been
+independently checked**. No candidate pair is automatically promoted.
+
+An Antiskill `players` response can also be **persisted** into an
+independent evidence ledger, after generating a core overlay:
+
+```sh
+python3 persist_core_occurrences.py --db "$DATA/identity.sqlite3" \
+  --overlay "$DATA/player-core-overlay.json" \
+  --report "$DATA/persisted-occurrences.json"
+```
+
+The ledger records `collection_blake3`, native `g1-...` occurrence IDs,
+player side, exact raw source ranges, FIDE/FSI IDs, crosswalk source hash
+and evidence class. Only a **single, conflict-free, corroborated** FSI/FIDE
+link is accepted; candidate-only links are rejected. The ledger is
+transactional and idempotent, rejecting contradictory re-attributions and
+never replacing the Nucleo's deduplication or game metadata.
+
+This is an evidence-bearing local projection, not a rewrite of the existing
+`game_attribution` experimental table, which lacks collection/side scope.
+Do not publish roster snapshots (including minors' data), real names,
+account candidates or raw PGNs in the public repository.
+
 ## Evidence semantics
 
 | Status | Meaning |
